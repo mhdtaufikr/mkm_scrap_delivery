@@ -1,0 +1,6 @@
+@extends('security.layout')
+@section('title','Activate Security Browser')
+@section('content')
+<section class="card mx-auto max-w-md p-5"><span class="badge">SECURITY DEVICE</span><h1 class="mt-3 text-xl font-bold">Activate this Security browser</h1><p class="mt-2 text-xs leading-5 text-muted">An administrator must register this browser before it can access Security documents. Once activated, no SSO sign-in is required. Officers use their personal PIN only when approving goods release.</p>
+<form action="{{ route('security.pair') }}" method="POST" class="mt-4 grid gap-3" data-submit-once>@csrf<div><label for="activation_code">One-time activation code</label><input id="activation_code" name="activation_code" type="password" autocomplete="off" minlength="12" maxlength="12" required class="text-center font-mono tracking-widest"><p class="help">12 characters. The code expires after 15 minutes and can be used once.</p></div><button type="submit" class="btn min-h-11">Activate this browser</button></form><p class="mt-4 border-t border-border pt-3 text-xs text-muted">Ask your administrator for a code from Administration &rarr; Security access. Activation applies to this browser profile.</p></section>
+@endsection

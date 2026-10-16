@@ -1,0 +1,24 @@
+@extends('security.layout')
+@section('title',$document->number)
+@section('content')
+<div class="page-heading"><div><h1>{{ $document->number }}</h1><p class="help">Vehicle and goods inspection</p></div><a class="btn btn-secondary" href="{{ route('security.index') }}">Back to queue</a></div>
+<div class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_330px]"><div class="min-w-0 space-y-3"><section class="card"><div class="card-header"><h2 class="text-sm font-bold">SMB details</h2><span class="badge">{{ $document->statusLabel() }}</span></div><dl class="grid grid-cols-2 gap-3 p-3">@foreach(['Driver'=>$document->driver_name,'Vehicle plate'=>$document->plate_number,'Company / buyer'=>$document->company,'Vehicle type'=>$document->vehicle,'Destination'=>$document->destination,'Planned departure'=>$document->departure_at?->format('d M Y H:i'),'Goods recipient'=>$document->receiver_name] as $label=>$value)<div><dt class="text-[10px] text-muted">{{ $label }}</dt><dd class="mt-1 break-words text-xs font-semibold">{{ $value ?: 'Not provided' }}</dd></div>@endforeach</dl></section>
+<section class="card"><div class="card-header"><h2 class="text-sm font-bold">Goods to inspect</h2></div>@if($document->items)<div class="table-wrap"><table class="data-table"><thead><tr><th>Code</th><th>Goods</th><th>Quantity</th><th>Remarks</th></tr></thead><tbody>@foreach($document->items as $item)<tr><td>{{ $item['code'] ?? '-' }}</td><td>{{ $item['name'] }}</td><td>{{ $item['quantity'] }} {{ $item['unit'] }}</td><td>{{ $item['remarks'] ?? '-' }}</td></tr>@endforeach</tbody></table></div>@else<p class="whitespace-pre-wrap break-words p-3 text-xs">{{ $document->goods_description }}</p>@endif</section>
+<section class="card p-3"><h2 class="text-sm font-bold">Signed handover evidence</h2>@if($document->handover_path)<a href="{{ route('security.evidence',$document) }}" class="btn btn-secondary mt-2 min-h-11">Open handover evidence</a>@else<p class="mt-2 text-xs text-amber-800">Handover evidence is not available yet. Goods release remains blocked.</p>@endif</section>
+</div><section class="card"><div class="card-header"><h2 class="text-sm font-bold">Security approval</h2></div><div class="p-3">
+@php($eligibleOfficers=$officers->filter(fn($o)=>$document->actionableBy($o->user) && isset($document->actions()['release'])))
+@if($document->status === 'COMPLETED')
+@php($release=$document->events->where('action','release')->last())<div class="rounded bg-emerald-50 p-3 text-xs text-emerald-900"><p class="font-bold">Goods release approved</p><p class="mt-2">{{ $release?->security_officer_name ?: $release?->user?->name }}</p><p>{{ $release?->security_device_name }}</p><p>{{ $release?->created_at?->format('d M Y H:i') }} WIB</p></div>
+@elseif($eligibleOfficers->isNotEmpty())
+<p class="mb-3 text-xs text-muted">Confirm the physical inspection. Your PIN authorizes this goods release only.</p>
+<form action="{{ route('security.approve',$document) }}" method="POST" class="grid gap-3" data-submit-once>@csrf<input type="hidden" name="inspection_version" value="{{ $document->inspectionVersion() }}">
+<div><label for="officer_id">Security officer *</label><select id="officer_id" name="officer_id" required><option value="">Select your name</option>@foreach($eligibleOfficers as $officer)<option value="{{ $officer->id }}" @selected((string)old('officer_id') === (string)$officer->id)>{{ $officer->user->name }}</option>@endforeach</select></div>
+<label class="flex items-start gap-2 text-xs font-normal leading-5"><input class="mt-1" type="checkbox" name="goods_checked" value="1" required>I have checked that the goods match this SMB and the signed handover evidence.</label>
+<label class="flex items-start gap-2 text-xs font-normal leading-5"><input class="mt-1" type="checkbox" name="vehicle_checked" value="1" required>I have checked the driver and vehicle plate.</label>
+<div><label for="notes">Inspection notes (optional)</label><textarea id="notes" name="notes" rows="2" maxlength="1000">{{ old('notes') }}</textarea></div>
+<div><label for="officer_pin">Your 6-digit PIN *</label><input id="officer_pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off" class="text-center font-mono !text-xl tracking-[0.4em]"><p class="help">Never share your PIN. Five incorrect attempts lock approval for 15 minutes.</p></div>
+<button class="btn min-h-12 w-full" type="submit">Approve Goods Release</button></form>
+@else<p class="rounded bg-amber-50 p-3 text-xs leading-5 text-amber-900">This document is awaiting {{ $document->statusLabel() }} or no active officer is assigned to its release step. Security cannot approve it yet.</p><a class="btn btn-secondary mt-3 w-full" href="{{ route('security.show',$document) }}">Check latest status</a>
+@endif
+</div></section></div>
+@endsection

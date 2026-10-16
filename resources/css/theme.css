@@ -1,0 +1,35 @@
+@theme {
+    /* Brand */
+    --color-primary: rgb(0 103 127);
+    --color-primary-dark: rgb(0 75 93);
+    --color-primary-soft: rgb(230 244 247);
+    --color-primary-border: rgb(153 197 206);
+
+    /* Surface / Background */
+    --color-page: rgb(242 246 247);
+    --color-surface: rgb(255 255 255);
+    --color-surface-muted: rgb(248 250 251);
+
+    /* Text */
+    --color-text: rgb(15 23 42);
+    --color-text-soft: rgb(51 65 85);
+    --color-muted: rgb(100 116 139);
+
+    /* Border / State */
+    --color-border: rgb(226 232 240);
+    --color-ring: rgb(0 103 127);
+    --color-success: rgb(22 163 74);
+    --color-warning: rgb(217 119 6);
+    --color-danger: rgb(220 38 38);
+
+    /* Sidebar */
+    --color-sidebar: rgba(85, 85, 85, 1);
+    --color-sidebar-dark: rgba(64, 64, 64, 1);
+
+    --color-sidebar-text: rgb(255 255 255);
+    --color-sidebar-text-soft: rgb(255 255 255 / 0.8);
+    --color-sidebar-text-muted: rgb(255 255 255 / 0.6);
+
+    --color-sidebar-hover: rgb(255 255 255 / 0.1);
+    --color-sidebar-border: rgb(255 255 255 / 0.1);
+}

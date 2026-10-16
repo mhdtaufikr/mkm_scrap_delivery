@@ -1,0 +1,113 @@
+<?php
+
+namespace App\Models;
+
+use App\Services\ApprovalConfiguration;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class DeliveryDocument extends Model
+{
+    protected $guarded = ['id'];
+
+    protected function casts(): array
+    {
+        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean'];
+    }
+
+    public const STATUSES = [
+        'DRAFT' => 'Draft', 'PROC_STAFF' => 'Procurement Staff Review',
+        'PROC_DH' => 'Procurement DH Approval', 'HRD' => 'HRD Approval',
+        'HANDOVER' => 'Signed Handover', 'SECURITY' => 'Security Inspection',
+        'COMPLETED' => 'Completed',
+    ];
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(DocumentEvent::class)->orderBy('id');
+    }
+
+    public function inspectionVersion(): string
+    {
+        return hash('sha256', $this->id.'|'.$this->getRawOriginal('updated_at').'|'.$this->events()->max('id'));
+    }
+
+    /** Only approvals from the current submission cycle belong on the printed form. */
+    public function printedApproval(string $role): ?DocumentEvent
+    {
+        if ($this->status === 'DRAFT') {
+            return null;
+        }
+        $events = $this->events->sortBy('id');
+        $lastReturn = $events->where('action', 'return')->last()?->id ?? 0;
+        $candidates = $events->filter(function (DocumentEvent $event) use ($role, $lastReturn) {
+            if ($event->id <= $lastReturn) {
+                return false;
+            }
+            if ($role === 'PROC_DH' && $event->actor_role === 'PROC_STAFF' && $event->action === 'delegate') {
+                return true;
+            }
+
+            return $event->actor_role === $role && in_array($event->action, ['approve', 'release'], true);
+        });
+
+        return $candidates->last();
+    }
+
+    public function statusLabel(): string
+    {
+        return $this->labelFor($this->status);
+    }
+
+    public function editableBy(User $user): bool
+    {
+        return $this->status === 'DRAFT' && $user->hasPermission('documents.create') && $this->created_by === $user->id;
+    }
+
+    public function actionableBy(User $user): bool
+    {
+        return app(ApprovalConfiguration::class)->canAct($this, $user);
+    }
+
+    public function labelFor(string $status): string
+    {
+        return __($this->approval_snapshot['steps'][$status]['name'] ?? self::STATUSES[$status] ?? ApprovalStep::where('code', $status)->latest('id')->value('name') ?? $status);
+    }
+
+    public static function statusOptions(): array
+    {
+        $options = [...self::STATUSES, ...ApprovalStep::orderBy('id')->pluck('name', 'code')->all()];
+        foreach (self::whereNotIn('status', array_keys($options))->distinct()->pluck('status') as $code) {
+            $document = self::where('status', $code)->latest('id')->first();
+            $options[$code] = $document?->approval_snapshot['steps'][$code]['name'] ?? $code;
+        }
+
+        return array_map(fn ($name) => __($name), $options);
+    }
+
+    public function actions(): array
+    {
+        return app(ApprovalConfiguration::class)->actions($this);
+    }
+
+    public function requiresHandover(): bool
+    {
+        return isset($this->actions()['handover']);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $doc) {
+            $step = app(ApprovalConfiguration::class)->definition($doc)['steps'][$doc->status] ?? null;
+            $doc->pending_owner_only = $doc->status === 'DRAFT' || ($step['actor_mode'] ?? null) === 'owner';
+            $doc->pending_role_code = ($step['actor_mode'] ?? null) === 'role' ? $step['role_code'] : null;
+            $doc->pending_user_ids = ($step['actor_mode'] ?? null) === 'users' ? $step['user_ids'] : [];
+        });
+    }
+}

@@ -1,0 +1,44 @@
+@extends('layouts.app')
+@section('title', $document->number)
+@section('content')
+<div class="page-heading"><div><h1 class="text-xl font-bold">{{ $document->number }}</h1><p class="help">Goods Release · {{ $document->type === 'SCRAP' ? 'Monthly Scrap' : 'Disposal' }}</p></div><div class="no-print flex flex-wrap gap-2"><a href="{{ route('documents.index') }}" class="btn btn-secondary">Back</a>@if($document->editableBy(auth()->user()))<a href="{{ route('documents.edit', $document) }}" class="btn">Edit draft</a>@endif
+@foreach(['smb'=>'SMB','delivery'=>'Delivery note','release'=>'Release letter'] as $key=>$label)<a class="btn btn-secondary" href="{{ route('documents.print',[$document,'template'=>$key]) }}">{{ $label }}</a>@endforeach</div></div>
+<div class="mb-3 flex flex-wrap items-center gap-3"><span class="badge {{ $document->status === 'DRAFT' ? 'badge-draft' : ($document->status === 'COMPLETED' ? 'badge-completed' : '') }}">{{ $document->statusLabel() }}</span><span class="text-xs text-muted">Created by {{ $document->creator->name }} · {{ $document->created_at->format('d/m/Y H:i') }} WIB</span></div>
+@if($document->approval_snapshot)<p class="mb-3 text-xs text-muted">Workflow: {{ __($document->approval_snapshot['name']) }} · Version {{ $document->approval_snapshot['version'] }}</p>@endif<div class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+<div class="min-w-0 space-y-3"><section class="card"><div class="card-header"><h2 class="text-sm font-bold">Document details</h2></div><dl class="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+@foreach(['Document date' => $document->document_date->format('d/m/Y'), 'Planned departure' => $document->departure_at?->format('d/m/Y H:i').' WIB', 'Carrier / driver' => $document->driver_name, 'Company / buyer' => $document->company, 'Destination' => $document->destination, 'Vehicle' => $document->vehicle, 'Plate number' => $document->plate_number, 'Workflow reference' => $document->workflow_reference, 'Goods recipient' => $document->receiver_name] as $label => $value)
+<div class="min-w-0"><dt class="text-[11px] text-muted">{{ $label }}</dt><dd class="mt-1 break-words text-sm font-semibold">{{ trim($value ?? '') && trim($value ?? '') !== 'WIB' ? $value : '—' }}</dd></div>
+@endforeach
+<div class="sm:col-span-2 lg:col-span-3"><dt class="text-[11px] text-muted">Goods description</dt><dd class="mt-1 whitespace-pre-line break-words text-sm">{{ $document->goods_description }}</dd></div>
+@if($document->notes)<div class="sm:col-span-2 lg:col-span-3"><dt class="text-[11px] text-muted">Creator notes</dt><dd class="mt-1 whitespace-pre-line break-words text-sm">{{ $document->notes }}</dd></div>@endif
+@if($document->completed_at)<div><dt class="text-[11px] text-muted">Goods released</dt><dd class="mt-1 text-sm font-semibold">{{ $document->completed_at->format('d/m/Y H:i') }} WIB</dd></div>@endif
+</dl>@if($document->handover_path)<div class="border-t border-border p-3"><a class="text-sm font-semibold text-primary underline" href="{{ route('documents.evidence', $document) }}">Download signed handover evidence</a><p class="help">Signed carrier and recipient evidence recorded by PPC.</p></div>@endif</section>
+@if($document->items)<section class="card"><div class="card-header"><h2 class="text-sm font-bold">Goods to be loaded</h2></div><div class="table-wrap"><table class="data-table"><thead><tr><th>No.</th><th>Code</th><th>Goods description</th><th>Quantity</th><th>Pallet</th><th>Posts</th><th>Remarks</th></tr></thead><tbody>@foreach($document->items as $item)<tr><td>{{ $loop->iteration }}</td><td>{{ $item['code'] ?? '-' }}</td><td>{{ $item['name'] }}</td><td>{{ $item['quantity'] }} {{ $item['unit'] }}</td><td>{{ $item['pallet'] ?? '-' }}</td><td>{{ $item['posts'] ?? '-' }}</td><td>{{ $item['remarks'] ?? '-' }}</td></tr>@endforeach</tbody></table></div></section>@endif
+<section class="card"><div class="card-header"><h2 class="text-sm font-bold">Document history</h2><span class="text-xs text-muted">WIB</span></div><ol class="divide-y divide-slate-100">
+@foreach($document->events as $event)
+<li class="flex gap-3 p-3"><span class="mt-1 size-2 shrink-0 rounded-full bg-primary"></span><div class="min-w-0 flex-1"><div class="flex flex-wrap justify-between gap-2"><p class="text-xs font-semibold">{{ __($event->action_label ?? ['created' => 'Document created', 'updated' => 'Draft updated', 'submit' => 'Submitted by PPC', 'next' => 'Next approval: Procurement DH', 'delegate' => 'Delegated approval by Procurement Staff', 'approve' => 'Approved', 'return' => 'Returned to PPC', 'handover' => 'Handover evidence recorded', 'release' => 'Goods release approved by Security'][$event->action] ?? $event->action) }}</p><time class="text-[10px] text-muted">{{ $event->created_at->format('d/m/Y H:i') }}</time></div><p class="mt-1 text-[11px] text-muted">{{ $event->user->name }} · {{ \App\Models\User::ROLES[$event->actor_role] ?? $event->actor_role }} → {{ __($event->status_label ?? $document->labelFor($event->to_status)) }}</p>@if($event->security_device_name)<p class="mt-1 text-[11px] text-muted">Security post: {{ $event->security_device_name }} | Officer: {{ $event->security_officer_name }}</p>@endif @if($event->evidence_path)<a href="{{ route('documents.event-evidence', [$document, $event->id]) }}" class="mt-2 inline-block text-xs text-primary underline">Handover evidence for this step</a>@endif @if($event->notes)<p class="mt-2 whitespace-pre-line break-words text-xs leading-5">{{ $event->notes }}</p>@endif</div></li>
+@endforeach
+</ol></section></div>
+<section class="card no-print"><div class="card-header"><h2 class="text-sm font-bold">Actions</h2></div><div class="p-3">
+@if($document->type === 'DISPOSAL')
+<div class="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">Disposal draft saved. Existing approvals, settled evidence, buyer price confirmation, and PPC/GA approval are not integrated. This document cannot be submitted or used to release goods.</div>
+@elseif($document->actionableBy(auth()->user()) && isset($document->actions()['release']) && \App\Models\SecurityOfficer::where('user_id', auth()->id())->exists())
+<p class="text-xs leading-5 text-muted">Use the activated Security browser and your personal PIN to record this goods release.</p><a class="btn mt-3 w-full" href="{{ route('security.show',$document) }}">Open Security Gate</a>
+@elseif($document->actionableBy(auth()->user()))
+<form action="{{ route('documents.transition', $document) }}" method="POST" enctype="multipart/form-data" class="space-y-3" data-submit-once>@csrf
+<p class="text-xs leading-5 text-muted">This action is recorded as <strong class="text-text">{{ auth()->user()->name }}</strong> ({{ auth()->user()->roleLabel() }}).</p>
+@if(isset($document->actions()['delegate']))<p class="rounded-lg bg-primary-soft p-3 text-xs leading-5 text-primary">Delegation follows the workflow version used at submission. A reason is required and the configured recipients are notified.</p>@endif
+@if($document->requiresHandover())
+<div><label for="receiver_name">Recipient name *</label><input id="receiver_name" name="receiver_name" value="{{ old('receiver_name') }}" maxlength="150"></div>
+<div><label for="evidence">Signed carrier and recipient evidence *</label><input id="evidence" name="evidence" type="file" accept="application/pdf,image/png,image/jpeg"><p class="help">PDF, JPG, or PNG, up to 5 MB. Upload evidence signed by both parties. PPC records evidence and does not sign on their behalf.</p></div>
+@endif
+<div><label for="action_notes">Notes / reason</label><textarea name="notes" id="action_notes" rows="2" maxlength="3000">{{ old('notes') }}</textarea><p class="help">A reason of at least 10 characters is required for Delegate or Return.</p></div>
+<label class="flex items-start gap-2 text-xs font-normal leading-5"><input class="mt-1" name="confirmed" type="checkbox" value="1" required>I have reviewed the document and confirm the selected action.@if($document->requiresHandover()) The evidence includes both carrier and recipient signatures.@endif</label>
+<div class="flex flex-wrap gap-2">
+@foreach($document->actions() as $action => $label)<button type="submit" name="action" value="{{ $action }}" class="btn w-full {{ $action === 'return' ? 'btn-danger' : ($action === 'delegate' ? 'btn-secondary' : '') }}">{{ $label }}</button>@endforeach</div></form>
+@elseif($document->status === 'COMPLETED')<div class="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Completed. Security has approved the goods release.</div>
+@else<p class="text-sm leading-5 text-muted">Awaiting <strong class="text-text">{{ $document->statusLabel() }}</strong>. Your role can view this document but has no action at this step.</p>
+@endif
+</div></section>
+</div>
+@endsection

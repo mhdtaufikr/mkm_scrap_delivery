@@ -1,0 +1,6 @@
+@extends('layouts.app')
+@section('title', 'Notifications')
+@section('content')
+<div class="page-heading"><div><h1 class="text-xl font-bold">Notifications</h1><p class="help">Document and approval updates for your account.</p></div></div>
+<section class="card divide-y divide-slate-100">@forelse($notifications as $notification)<div class="flex flex-wrap items-center justify-between gap-3 p-3 {{ !$notification->read_at ? 'bg-primary-soft/40' : '' }}"><div class="min-w-0"><p class="text-sm font-semibold">{{ $notification->data['number'] }}</p><p class="mt-1 break-words text-xs leading-5">{{ implode(' · ', array_map(fn ($part) => __(strtr($part, ['Dokumen baru' => 'New document', 'masih draft' => 'draft'])), explode(' · ', $notification->data['message']))) }}</p><p class="mt-1 text-[10px] text-muted">{{ $notification->created_at->format('d/m/Y H:i') }} WIB · {{ $notification->read_at ? 'Read' : 'Unread' }}</p></div><form action="{{ route('notifications.read', $notification->id) }}" method="POST">@csrf<button type="submit" class="btn btn-secondary">Open document →</button></form></div>@empty<div class="p-12 text-center text-sm text-muted">No notifications for your account.</div>@endforelse</section><div class="mt-4">{{ $notifications->links() }}</div>
+@endsection

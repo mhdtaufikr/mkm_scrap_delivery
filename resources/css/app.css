@@ -1,0 +1,144 @@
+@import './theme.css';
+@import 'tailwindcss';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+@theme { --font-sans: 'Segoe UI', ui-sans-serif, system-ui, sans-serif; }
+@layer base {
+    body { @apply bg-page text-text font-sans text-[13px] leading-normal antialiased; }
+    button, summary, a { -webkit-tap-highlight-color: transparent; }
+    button, summary { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+    input, select, textarea { max-width: 100%; }
+    label { @apply mb-1 block text-[11px] font-semibold text-slate-700; }
+    input:not([type='checkbox']), select, textarea { @apply border-border min-h-10 w-full rounded-md border bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft sm:min-h-8 sm:py-1 sm:text-xs; }
+    textarea { @apply leading-5; }
+    input[type='checkbox'] { @apply size-4 shrink-0 accent-primary; }
+    button:disabled { @apply cursor-not-allowed opacity-50; }
+    summary { list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+}
+@layer components {
+    .card { @apply min-w-0 rounded-lg border border-border bg-white shadow-sm; }
+    .card-header { @apply flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2; }
+    .btn { @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-transparent bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark sm:min-h-8 sm:py-1; }
+    .btn-secondary { @apply border-border bg-white text-slate-700 hover:bg-slate-50; }
+    .btn-danger { @apply border-red-200 bg-red-50 text-red-700 hover:bg-red-100; }
+    .nav-link { @apply flex min-h-10 items-center gap-1.5 border-b-2 border-transparent px-2.5 text-[11px] font-semibold text-text-soft hover:border-primary hover:bg-surface-muted hover:text-primary; }
+    .nav-link.active { @apply border-primary bg-primary-soft text-primary; }
+    .badge { @apply inline-flex rounded-md border border-primary-border bg-primary-soft px-2 py-1 text-[10px] font-semibold text-primary; }
+    .badge-draft { @apply border-slate-200 bg-slate-100 text-slate-600; }
+    .badge-completed { @apply border-emerald-200 bg-emerald-50 text-emerald-700; }
+    .table-wrap { @apply overflow-x-auto; }
+    .data-table { @apply w-full text-left text-xs; }
+    .data-table th { @apply whitespace-nowrap border-b border-border bg-slate-50 px-3 py-2 text-[10px] font-semibold text-muted; }
+    .data-table td { @apply border-b border-slate-100 px-3 py-1.5 align-middle; }
+    .data-table tbody tr:hover { @apply bg-primary-soft/40; }
+    .help { @apply mt-0.5 text-[11px] leading-4 text-muted; }
+    .page-heading { @apply mb-3 flex flex-wrap items-center justify-between gap-2; }
+    .page-heading h1 { @apply text-lg leading-6; }
+    .alert-success { @apply mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800; }
+    .alert-error { @apply mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700; }
+    .stat-strip { @apply mb-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-white sm:grid-cols-4; }
+    .stat-strip > div { @apply flex items-center justify-between gap-2 border-b border-r border-border px-3 py-2 last:border-r-0 sm:border-b-0; }
+    .stat-strip strong { @apply text-lg font-semibold leading-6; }
+    .compact-multi { @apply !h-20 !min-h-20; }
+    .user-sso[open] { flex-basis: 100%; order: 5; }
+    .skip-link { @apply fixed -top-20 left-4 z-50 rounded-lg bg-primary px-4 py-3 text-sm text-white focus:top-4; }
+    .user-menu { @apply absolute right-0 z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-white shadow-xl; }
+}
+@media print {
+    .no-print, header, footer, nav { display: none !important; }
+    body { background: white; }
+    .card { box-shadow: none; break-inside: avoid; }
+    main { max-width: none !important; padding: 0 !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+
+/* Document layouts follow the supplied MKM paper forms. */
+.paper-sheet { position: relative; background: #fff; color: #111; border: 1px solid #333; padding: 18px; font-family: Arial, sans-serif; font-size: 12px; }
+.paper-brand { display: flex; align-items: center; gap: 22px; text-align: center; padding-bottom: 10px; border-bottom: 2px solid #111; }
+.paper-brand img { width: 90px; height: 48px; object-fit: contain; flex-shrink: 0; }
+.paper-brand > div { flex: 1; }
+.paper-brand strong { font-size: 12px; }
+.paper-brand h1, .paper-brand h2 { font-size: 23px; font-weight: 700; margin: 4px 0; line-height: 1.2; }
+.paper-brand p { font-size: 11px; }
+.paper-state { border: 1px solid #444; padding: 4px 8px; font-size: 10px; }
+.paper-form-heading, .paper-revision { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #111; font-size: 10px; }
+.paper-input-line { display: flex; align-items: center; gap: 8px; }
+.paper-input-line label { width: 135px; flex-shrink: 0; font-size: 10px; margin: 0; }
+.paper-editor input, .paper-editor select { border-radius: 0; min-width: 0; }
+.paper-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+.paper-table th, .paper-table td { border: 1px solid #222; padding: 5px; vertical-align: top; overflow-wrap: anywhere; }
+.paper-table th { text-align: center; font-weight: 700; }
+.paper-items-editor { min-width: 900px; table-layout: auto; }
+.paper-items-editor th:first-child { width: 32px; }
+.paper-items-editor input { width: 100%; min-width: 54px; padding: 4px; font-size: 11px; }
+.paper-items-editor input[name$="[name]"] { min-width: 180px; }
+.paper-items-editor input[name$="[remarks]"] { min-width: 120px; }
+.paper-signature { text-align: center; border-top: 1px solid #333; padding: 8px 5px 0; }
+.paper-signature input { margin-top: 12px; }
+.paper-preview-scroll { overflow-x: auto; padding: 0 12px 24px; }
+.document-print-page { background: #e9edf1; }
+.paper-print-sheet { width: 275mm; max-width: none; min-height: 175mm; margin: 0 auto; padding: 10mm; font-size: 11px; }
+.paper-heading-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin: 15px 0 8px; }
+.paper-heading-fields > div { display: flex; gap: 6px; }
+.paper-heading-fields strong { flex: 0 0 145px; font-size: 10px; }
+.paper-heading-fields span { border-bottom: 1px solid #777; flex: 1; overflow-wrap: anywhere; }
+.paper-goods-caption { margin: 10px 0 5px; font-weight: 700; font-size: 10px; }
+.paper-goods td { height: 25px; }
+.paper-smb-bottom { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 20px; margin-top: 16px; }
+.paper-smb-bottom p { margin: 5px 0; }
+.paper-approval-name { min-height: 65px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 12px 0; font-size: 11px; }
+.paper-approval-name small { display: block; font-size: 8px; margin-top: 4px; }
+.paper-signatures { margin-top: 16px; }
+.paper-signatures td { height: 100px; text-align: center; }
+.paper-sign-line { margin-top: 5px; border-bottom: 1px dotted #777; min-height: 18px; }
+.paper-copy-colors { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 9px; }
+.paper-audit-foot { margin-top: 12px; padding-top: 5px; border-top: 1px solid #aaa; font-size: 8px; color: #555; }
+.paper-draft-mark { text-align: center; color: #9a3412; border: 1px dashed #9a3412; padding: 4px; margin-bottom: 8px; font-size: 10px; font-weight: 700; }
+.paper-letter { width: 190mm; min-height: 277mm; font-size: 11px; }
+.paper-letter .paper-brand { padding-bottom: 16px; margin-bottom: 20px; }
+.paper-letter-meta { display: flex; justify-content: space-between; gap: 16px; margin: 24px 0; }
+.paper-letter p { margin: 16px 0; }
+.paper-recipient { width: 100%; margin: 10px 0 20px; }
+.paper-recipient td { padding: 3px; vertical-align: top; }
+.paper-letter-subject { margin: 30px 0; text-align: center; font-size: 19px; font-weight: 700; }
+.paper-letter-reference { line-height: 2.5; }
+.paper-letter-details { width: 100%; margin: 34px 0; }
+.paper-letter-details td { padding: 8px; vertical-align: top; }
+.paper-letter-details td:first-child { width: 38%; }
+.paper-letter-details td:last-child { border-bottom: 1px dotted #777; }
+.paper-letter-sign { width: 190px; margin: 24px 0 30px auto; text-align: center; }
+.paper-letter-sign .paper-approval-name { min-height: 75px; }
+.paper-letter-copy { margin-top: 40px; }
+@media(max-width: 639px) {
+ .paper-editor { padding: 10px; }
+ .paper-editor .paper-brand { gap: 8px; }
+ .paper-editor .paper-brand img { width: 48px; height: 32px; }
+ .paper-editor .paper-brand strong { font-size: 8px; }
+ .paper-editor .paper-brand h2 { font-size: 16px; }
+ .paper-editor .paper-state { display: none; }
+ .paper-input-line label { width: 112px; }
+}
+@page { size: A4 landscape; margin: 10mm; }
+@media print {
+ body.document-print-page { background: white; }
+ .paper-preview-scroll { overflow: visible; padding: 0; }
+ .paper-print-sheet { width: 100%; min-height: 0; padding: 4mm; margin: 0; border: 1px solid #111; }
+ .paper-letter { width: 100%; }
+ .paper-table thead { display: table-header-group; }
+ .paper-table tr, .paper-signatures, .paper-smb-bottom, .paper-letter-sign { break-inside: avoid; }
+}
+
+.paper-print-sheet .paper-brand img { filter: grayscale(1); }
+
+[data-goods-form], .paper-editor, .paper-editor .paper-brand > div { min-width: 0; max-width: 100%; }
+.paper-editor .paper-brand > div { overflow-wrap: anywhere; }
+.paper-editor .paper-input-line input { flex: 1 1 0; width: 0; }
+.paper-editor > .overflow-x-auto { width: 100%; max-width: 100%; }
+
+[data-goods-form], .paper-editor { overflow-x: clip; }
+
+.paper-delegation-reason { overflow-wrap: anywhere; white-space: pre-wrap; text-align: center; max-width: 100%; }
