@@ -120,8 +120,8 @@ class ScrapApplicationTest extends TestCase
         $this->assertStringStartsWith('SMB-', $doc->number);
         $this->post('/documents', $this->data())->assertSessionHasNoErrors();
         $this->assertSame(2, DeliveryDocument::distinct()->count('number'));
-        $this->assertSame(2, $security->notifications()->count());
-        $this->assertSame(2, $staff->notifications()->count());
+        $this->assertSame(0, $security->notifications()->count());
+        $this->assertSame(0, $staff->notifications()->count());
         $this->get(route('documents.show', $doc))->assertOk()->assertSee($doc->number);
         $this->get(route('documents.edit', $doc))->assertOk();
     }
@@ -180,6 +180,7 @@ class ScrapApplicationTest extends TestCase
         $doc = $this->document($ppc, 'PROC_STAFF');
         $dh = $this->account('PROC_DH');
         $sh = $this->account('PROC_SH');
+        $hrd = $this->account('HRD');
         $this->actingAs($sh);
         $this->action($doc, 'delegate', ['notes' => 'DH sedang di luar kantor'])->assertForbidden();
         $staff = $this->account('PROC_STAFF');
@@ -188,8 +189,9 @@ class ScrapApplicationTest extends TestCase
         $this->action($doc, 'delegate', ['notes' => 'DH sedang di luar kantor'])->assertSessionHasNoErrors();
         $this->assertSame('HRD', $doc->fresh()->status);
         $this->assertSame($staff->id, $doc->events()->first()->user_id);
-        $this->assertSame(1, $dh->notifications()->count());
-        $this->assertSame(1, $sh->notifications()->count());
+        $this->assertSame(0, $dh->notifications()->count());
+        $this->assertSame(0, $sh->notifications()->count());
+        $this->assertSame(1, $hrd->notifications()->count());
     }
 
     public function test_return_invalidates_current_handover_but_preserves_historical_evidence(): void

@@ -88,7 +88,7 @@ class ApprovalConfiguration
                 $walked[$key] = true;
                 $step = $map[$code];
                 $visited[$code] = true;
-                $signed = $signed || $step['action'] === 'handover';
+                $signed = $signed || $step['action'] === 'handover' || $step['code'] === 'DRIVER_HANDOVER';
                 if ($step['action'] === 'release' && ! $signed) {
                     $fail('Every release route must include signed handover evidence.');
                 }

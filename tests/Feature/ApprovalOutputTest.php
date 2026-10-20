@@ -42,7 +42,10 @@ class ApprovalOutputTest extends TestCase
         $this->assertSame('HRD', $doc->status);
         $this->assertSame('delegate', $doc->printedApproval('PROC_DH')->action);
         foreach (['delivery', 'release'] as $template) {
-            $this->actingAs($owner)->get(route('documents.print', [$doc, 'template' => $template]))->assertOk()->assertSee('Delegating Staff')->assertSee('Approved by Procurement Staff (Delegate)')->assertSee('Department head is away from the office.')->assertSee($doc->events()->where('action', 'delegate')->first()->created_at->format('d M Y H:i'));
+            $response = $this->actingAs($owner)->get(route('documents.print', [$doc, 'template' => $template]))->assertOk()->assertSee('Delegating Staff')->assertSee('paper-approval-check', false)->assertSee('Disetujui oleh delegasi')->assertSee('Department head is away from the office.')->assertSee($doc->events()->where('action', 'delegate')->first()->created_at->format('d/m/Y H:i'));
+            if ($template === 'delivery') {
+                $response->assertSee('DEPT HEAD / DELEGATE')->assertSee('HR &amp; ADM DEPT HEAD', false);
+            }
         }
     }
 
@@ -81,8 +84,9 @@ class ApprovalOutputTest extends TestCase
         $doc = $this->document($owner);
         $this->act($doc, $owner, 'submit');
         $this->act($doc, $staff, 'delegate', 'Head is out of the office.');
+        Notification::assertSentTo($hrd, DocumentUpdated::class);
+        Notification::assertNotSentTo([$dh, $sh], DocumentUpdated::class);
         foreach ([$dh, $sh, $hrd] as $recipient) {
-            Notification::assertSentTo($recipient, DocumentUpdated::class);
             Notification::assertSentTo($recipient, WorkflowUpdateMail::class, fn ($n) => $n->reason === 'Head is out of the office.' && $n->queue === 'workflow-mail' && $n->connection === 'database' && $n->afterCommit === true);
         }
         Notification::assertNotSentTo([$pending, $disabled], DocumentUpdated::class);

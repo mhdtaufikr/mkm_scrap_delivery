@@ -43,9 +43,19 @@ class DocumentWorkflow
             if ($action === 'release' && (! $doc->handover_path || ! Storage::disk('local')->exists($doc->handover_path))) {
                 throw ValidationException::withMessages(['evidence' => 'Valid handover evidence is required before goods release.']);
             }
+            if ($from === 'DRIVER_HANDOVER' && ! $doc->driver_signed_at) {
+                throw ValidationException::withMessages(['action' => 'The driver must submit a signature before MKM verification.']);
+            }
             $doc->status = $next;
             if ($action === 'return') {
-                $doc->fill(['handover_path' => null, 'receiver_name' => null]);
+                $doc->fill([
+                    'handover_path' => null, 'receiver_name' => null, 'pickup_actual_name' => null,
+                    'driver_signed_name' => null, 'driver_signature_path' => null, 'driver_signed_at' => null,
+                    'driver_token_hash' => null, 'driver_token_encrypted' => null,
+                    'seal_actual_name' => null, 'sealed_at' => null,
+                    'security_code_hash' => null, 'security_code_encrypted' => null,
+                    'security_code_issued_at' => null, 'security_code_used_at' => null,
+                ]);
             }
             if ($action === 'handover') {
                 $doc->fill($handover);
@@ -53,17 +63,34 @@ class DocumentWorkflow
             if ($action === 'handover' && $next === 'SECURITY') {
                 $doc->issueSecurityCode();
             }
+            if ($from === 'WAREHOUSE_PICKUP' && $next === 'DRIVER_HANDOVER') {
+                $doc->pickup_actual_name = $context['actual_actor_name'] ?? null;
+                $doc->issueDriverToken();
+            }
+            if ($from === 'DRIVER_HANDOVER' && $next === 'SECURITY') {
+                $doc->seal_actual_name = $context['actual_actor_name'] ?? null;
+                $doc->sealed_at = now();
+                $doc->handover_path = $doc->driver_signature_path;
+                $doc->receiver_name = $doc->driver_signed_name;
+                $doc->issueSecurityCode();
+            }
             if ($next === 'COMPLETED') {
                 $doc->completed_at = now();
             }
             $doc->save();
             $doc->events()->create(['user_id' => $actor->id, 'actor_role' => $actor->role, 'action' => $action, 'action_label' => $actions[$action], 'status_label' => $doc->statusLabel(), 'from_status' => $from, 'to_status' => $next, 'notes' => $notes, 'evidence_path' => $action === 'handover' ? $doc->handover_path : null, ...array_intersect_key($context, array_flip(['security_device_id', 'security_device_name', 'security_officer_name', 'actual_actor_name']))]);
+            $actor->unreadNotifications->filter(fn ($notification) => (int) ($notification->data['document_id'] ?? 0) === $doc->id)->each->markAsRead();
             $target = $definition['steps'][$next] ?? null;
-            $roles = array_unique([...($target['notice_roles'] ?? []), ...($action === 'delegate' ? ($step['delegate_notice_roles'] ?? []) : []), ...(($target['actor_mode'] ?? '') === 'role' ? [$target['role_code']] : [])]);
-            $ids = array_unique([$doc->created_by, ...(($target['actor_mode'] ?? '') === 'users' ? ($target['user_ids'] ?? []) : [])]);
-            $recipients = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->where(fn ($q) => $q->whereIn('role', $roles)->orWhereIn('id', $ids))->get();
             $message = $actor->name.' · '.$actions[$action].' · '.$doc->statusLabel();
-            app(DocumentNotifications::class)->send($recipients, $doc, $message, $notes);
+            $approvalRoles = ($target['actor_mode'] ?? '') === 'role' ? [$target['role_code']] : [];
+            $approvalIds = ($target['actor_mode'] ?? '') === 'users' ? ($target['user_ids'] ?? []) : (($target['actor_mode'] ?? '') === 'owner' ? [$doc->created_by] : []);
+            $approvers = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->where(fn ($q) => $q->whereIn('role', $approvalRoles)->orWhereIn('id', $approvalIds))->whereKeyNot($actor->id)->get();
+            if ($next !== 'DRIVER_HANDOVER') {
+                app(DocumentNotifications::class)->send($approvers, $doc, $message, $notes);
+            }
+            $noticeRoles = array_unique([...($target['notice_roles'] ?? []), ...($action === 'delegate' ? ($step['delegate_notice_roles'] ?? []) : [])]);
+            $informational = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->where(fn ($q) => $q->whereIn('role', $noticeRoles)->orWhere('id', $doc->created_by))->whereKeyNot($actor->id)->whereNotIn('id', $approvers->pluck('id'))->get();
+            app(DocumentNotifications::class)->sendInformational($informational, $doc, $message, $notes);
         });
     }
 }

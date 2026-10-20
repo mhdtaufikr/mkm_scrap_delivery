@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DeliveryDocument;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class DocumentFormTest extends TestCase
@@ -20,8 +21,9 @@ class DocumentFormTest extends TestCase
     {
         $u = User::factory()->create(['role' => 'PPC']);
         $this->actingAs($u)->get('/documents/create')->assertOk()
-            ->assertSee('Quick guide')->assertSee('Trip details')->assertSee('Save draft')
+            ->assertSee('Quick guide')->assertSee('Trip details')->assertSee('Save as draft')->assertSee('Save &amp; Send for Approval', false)
             ->assertSee('SURAT MUAT BARANG')->assertSee('data-goods-rows', false)
+            ->assertSee('Paste from Excel')->assertSee('data-goods-paste', false)
             ->assertSee('paper-signature paper-attachment', false)->assertSee('ATTACHMENTS');
         $this->post('/documents', $this->payload())->assertRedirect()->assertSessionHasNoErrors();
         $d = DeliveryDocument::firstOrFail();
@@ -31,8 +33,16 @@ class DocumentFormTest extends TestCase
         $this->get(route('documents.show', $d))->assertOk()->assertSee('Wood EX CKD');
         $this->get(route('documents.edit', $d))->assertOk()->assertSee('SALE-001');
         foreach (['smb' => 'SURAT MUAT BARANG', 'delivery' => 'SURAT JALAN NON PRODUKSI', 'release' => 'Pengeluaran Barang'] as $template => $title) {
-            $this->get(route('documents.print', [$d, 'template' => $template]))->assertOk()->assertSee($title)->assertSee('Wood EX CKD')->assertSee('DRAFT - NOT FOR GOODS RELEASE');
+            $this->get(route('documents.print', [$d, 'template' => $template]))->assertOk()->assertSee($title)->assertSee('Wood EX CKD')->assertSee('DRAF - BELUM SAH UNTUK PENGELUARAN BARANG')->assertDontSee("@include('pwa.head')", false);
         }
+        Storage::fake('local');
+        Storage::disk('local')->put('driver-signatures/test.png', "\x89PNG\r\n\x1a\n".str_repeat('signature', 20));
+        $approver = User::factory()->create(['role' => 'SECURITY']);
+        $d->update(['status' => 'SECURITY', 'driver_signed_name' => 'Driver Signed', 'driver_signature_path' => 'driver-signatures/test.png', 'driver_signed_at' => now()]);
+        $d->events()->create(['user_id' => $approver->id, 'actor_role' => 'SECURITY', 'action' => 'release', 'from_status' => 'SECURITY', 'to_status' => 'COMPLETED']);
+        $this->get(route('documents.print', [$d, 'template' => 'smb']))->assertOk()
+            ->assertSee('paper-approval-check', false)->assertSee('✓')->assertSee('Driver Signed')
+            ->assertSee('data:image/png;base64,', false);
         $this->get(route('documents.print', [$d, 'template' => 'invalid']))->assertSessionHasErrors('template');
     }
 
@@ -84,6 +94,20 @@ class DocumentFormTest extends TestCase
         $d->update(['status' => 'PROC_STAFF']);
         $this->put(route('documents.update', $d), $this->payload())->assertForbidden();
         $this->assertSame('Wood EX CKD', $d->fresh()->items[0]['name']);
+    }
+
+    public function test_excel_style_pallet_and_post_codes_are_accepted(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'PPC']));
+        $data = $this->payload();
+        $data['items'][0]['quantity'] = 1250;
+        $data['items'][0]['pallet'] = 'PLT-001';
+        $data['items'][0]['posts'] = 'P300';
+        $this->post('/documents', $data)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('delivery_documents', 1);
+        $item = DeliveryDocument::firstOrFail()->items[0];
+        $this->assertSame('PLT-001', $item['pallet']);
+        $this->assertSame('P300', $item['posts']);
     }
 
     public function test_legacy_documents_remain_printable_and_print_requires_authenticated_approved_access(): void

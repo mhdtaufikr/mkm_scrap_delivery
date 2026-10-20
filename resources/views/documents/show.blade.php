@@ -14,6 +14,19 @@
 @if($document->completed_at)<div><dt class="text-[11px] text-muted">Goods released</dt><dd class="mt-1 text-sm font-semibold">{{ $document->completed_at->format('d/m/Y H:i') }} WIB</dd></div>@endif
 </dl>@if($document->handover_path)<div class="border-t border-border p-3"><a class="text-sm font-semibold text-primary underline" href="{{ route('documents.evidence', $document) }}">Download signed handover evidence</a><p class="help">Signed carrier and recipient evidence recorded by PPC.</p></div>@endif</section>
 @if($document->security_code_hash && in_array($document->status, ['SECURITY','COMPLETED']))<section class="card border-primary"><div class="card-header"><h2 class="text-sm font-bold">Security Gate unique number</h2><span class="badge {{ $document->security_code_used_at ? 'badge-completed' : '' }}">{{ $document->security_code_used_at ? 'Used' : 'Active' }}</span></div><div class="p-4 text-center"><p class="select-all font-mono text-2xl font-bold tracking-widest text-primary">{{ $document->securityCode() }}</p><p class="mt-2 text-xs text-muted">Give this number to the driver. Security enters it in the Security PWA; it only opens this SMB and closes after validation.</p></div></section>@endif
+@if($document->status === 'DRIVER_HANDOVER' && $document->actionableBy(auth()->user()))
+@php($driverUrl=$document->driverSignatureUrl())
+<section class="card border-primary" @unless($document->driver_signed_at) data-driver-signature-watch="{{ route('driver-signature.status',$document) }}" @endunless><div class="card-header"><div><h2 class="text-sm font-bold">Driver Signature QR</h2><p class="help">Pickup PIC: {{ $document->pickup_actual_name ?: 'Not recorded' }}</p></div><span class="badge {{ $document->driver_signed_at ? 'badge-completed' : '' }}" data-driver-signature-state>{{ $document->driver_signed_at ? 'Signed' : 'Awaiting driver' }}</span></div><div class="grid gap-4 p-4 md:grid-cols-[240px_minmax(0,1fr)]"><div class="rounded-lg border border-border bg-white p-2"><img src="{{ $document->driver_signed_at ? route('driver-signature.image',$document) : route('driver-signature.qr',$document) }}" alt="{{ $document->driver_signed_at ? 'Recorded driver signature' : 'QR code for driver signature' }}" class="mx-auto h-56 max-w-full object-contain"></div><div class="flex flex-col justify-center"><h3 class="text-base font-bold">{{ $document->driver_signed_at ? 'Driver signature received' : 'Show Driver Signature QR' }}</h3>
+@if($document->driver_signed_at)
+<p class="mt-2 text-xs leading-5 text-muted">Signed by <strong class="text-text">{{ $document->driver_signed_name }}</strong> on {{ $document->driver_signed_at->format('d/m/Y H:i') }} WIB. Verify it before applying the MKM stamp.</p>
+@else
+<p class="mt-2 text-xs leading-5 text-muted">The driver can scan without an account. The link accepts one signature only.</p><p class="mt-2 text-xs font-semibold text-primary" data-driver-signature-waiting>Checking automatically every 4 seconds…</p>
+@endif
+@if(in_array(parse_url($driverUrl, PHP_URL_HOST), ['localhost', '127.0.0.1'], true))
+<p class="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">The current link uses localhost. Set <code>APP_URL</code> to the server IP or internal domain before the driver scans it from a phone.</p>
+@endif
+<div class="mt-4 flex flex-wrap gap-2"><button type="button" class="btn btn-secondary" data-copy-value="{{ $driverUrl }}">Copy Driver Link</button><a class="btn btn-secondary" href="{{ $driverUrl }}" target="_blank" rel="noopener">Open Driver Form</a></div></div></div></section>
+@endif
 @if($document->items)<section class="card"><div class="card-header"><h2 class="text-sm font-bold">Goods to be loaded</h2></div><div class="table-wrap"><table class="data-table"><thead><tr><th>No.</th><th>Code</th><th>Goods description</th><th>Quantity</th><th>Pallet</th><th>Posts</th><th>Remarks</th></tr></thead><tbody>@foreach($document->items as $item)<tr><td>{{ $loop->iteration }}</td><td>{{ $item['code'] ?? '-' }}</td><td>{{ $item['name'] }}</td><td>{{ $item['quantity'] }} {{ $item['unit'] }}</td><td>{{ $item['pallet'] ?? '-' }}</td><td>{{ $item['posts'] ?? '-' }}</td><td>{{ $item['remarks'] ?? '-' }}</td></tr>@endforeach</tbody></table></div></section>@endif
 <section class="card"><div class="card-header"><h2 class="text-sm font-bold">Document history</h2><span class="text-xs text-muted">WIB</span></div><ol class="divide-y divide-slate-100">
 @foreach($document->events as $event)
@@ -34,10 +47,14 @@
 @if($document->status === 'WAREHOUSE_PICKUP')
 <div><label for="actual_actor_name">Actual pickup PIC name *</label><input id="actual_actor_name" name="actual_actor_name" value="{{ old('actual_actor_name') }}" required minlength="3" maxlength="150" placeholder="Security / warehouse team member on duty"><p class="help">Use the real person handling the pickup; the shared notification account is not recorded as the physical PIC.</p></div>
 @endif
+@if($document->status === 'DRIVER_HANDOVER')
+<div><label for="actual_actor_name">Actual MKM verification PIC name *</label><input id="actual_actor_name" name="actual_actor_name" value="{{ old('actual_actor_name') }}" required minlength="3" maxlength="150" placeholder="Officer applying the MKM stamp"><p class="help">This is separate from the pickup PIC because the people may differ.</p></div>
+@unless($document->driver_signed_at)<div class="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">The verification action remains blocked until the driver submits the one-time signature form.</div>@endunless
+@endif
 <div><label for="action_notes">Notes / reason</label><textarea name="notes" id="action_notes" rows="2" maxlength="3000">{{ old('notes') }}</textarea><p class="help">A reason of at least 10 characters is required for Delegate or Return.</p></div>
 <label class="flex items-start gap-2 text-xs font-normal leading-5"><input class="mt-1" name="confirmed" type="checkbox" value="1" required>I have reviewed the document and confirm the selected action.@if($document->requiresHandover()) The evidence includes both carrier and recipient signatures.@endif</label>
 <div class="flex flex-wrap gap-2">
-@foreach($document->actions() as $action => $label)<button type="submit" name="action" value="{{ $action }}" class="btn w-full {{ $action === 'return' ? 'btn-danger' : ($action === 'delegate' ? 'btn-secondary' : '') }}">{{ $label }}</button>@endforeach</div></form>
+@foreach($document->actions() as $action => $label)@if(!($document->status === 'DRIVER_HANDOVER' && !$document->driver_signed_at))<button type="submit" name="action" value="{{ $action }}" class="btn w-full {{ $action === 'return' ? 'btn-danger' : ($action === 'delegate' ? 'btn-secondary' : '') }}">{{ $label }}</button>@endif @endforeach</div></form>
 @elseif($document->status === 'COMPLETED')<div class="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Completed. Security has approved the goods release.</div>
 @else<p class="text-sm leading-5 text-muted">Awaiting <strong class="text-text">{{ $document->statusLabel() }}</strong>. Your role can view this document but has no action at this step.</p>
 @endif

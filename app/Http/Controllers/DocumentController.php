@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\DeliveryDocument;
-use App\Models\User;
 use App\Services\ApprovalConfiguration;
-use App\Services\DocumentNotifications;
 use App\Services\DocumentWorkflow;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -66,6 +68,18 @@ class DocumentController extends Controller
 
     private function validated(Request $request): array
     {
+        if (is_array($request->input('items'))) {
+            $items = array_map(function ($item) {
+                foreach (['pallet', 'posts'] as $field) {
+                    if (array_key_exists($field, $item) && $item[$field] !== null) {
+                        $item[$field] = (string) $item[$field];
+                    }
+                }
+
+                return $item;
+            }, $request->input('items'));
+            $request->merge(['items' => $items]);
+        }
         if ($request->input('type') === 'DISPOSAL' && ($request->filled('release_date') || $request->filled('release_time'))) {
             $request->validate(['release_date' => 'required|date_format:Y-m-d', 'release_time' => 'required|date_format:H:i']);
             $request->merge(['departure_at' => $request->input('release_date').' '.$request->input('release_time')]);
@@ -83,8 +97,8 @@ class DocumentController extends Controller
             'items.*.name' => 'required|string|max:255',
             'items.*.quantity' => 'required|numeric|gt:0|max:999999999',
             'items.*.unit' => 'required|string|max:30',
-            'items.*.pallet' => 'nullable|integer|min:0|max:999999',
-            'items.*.posts' => 'nullable|integer|min:0|max:999999',
+            'items.*.pallet' => 'nullable|string|max:60',
+            'items.*.posts' => 'nullable|string|max:60',
             'items.*.remarks' => 'nullable|string|max:255',
             'form_details' => 'nullable|array:delivery_number,identity_number,lot,department,loader_name,attachments,letter_city,letter_number,recipient_hr,recipient_ppc,sales_reference,sales_reference_date,origin_department,disposal_date,sale_date,sale_time,buyer_contact,location',
             'form_details.delivery_number' => 'nullable|string|max:100',
@@ -122,26 +136,51 @@ class DocumentController extends Controller
     public function print(Request $request, DeliveryDocument $document)
     {
         $data = $request->validate(['template' => ['required', Rule::in(['smb', 'delivery', 'release'])]]);
+        $driverSignatureDataUri = null;
+        if ($document->driver_signature_path && Storage::disk('local')->exists($document->driver_signature_path)) {
+            $driverSignatureDataUri = 'data:image/png;base64,'.base64_encode(Storage::disk('local')->get($document->driver_signature_path));
+        }
+        $documentQrDataUri = null;
+        $documentQrLabel = null;
+        $documentQrValue = null;
+        if ($data['template'] !== 'release' && $document->status === 'SECURITY' && ! $document->security_code_used_at && $document->securityCode()) {
+            $payload = 'MKM-SMB:'.$document->securityCode();
+            $svg = (new Writer(new ImageRenderer(new RendererStyle(180, 1), new SvgImageBackEnd)))->writeString($payload);
+            $documentQrDataUri = 'data:image/svg+xml;base64,'.base64_encode($svg);
+            $documentQrLabel = 'PINDAI DI POS SECURITY';
+            $documentQrValue = $document->securityCode();
+        } elseif ($data['template'] !== 'release' && $document->status === 'DRIVER_HANDOVER' && ! $document->driver_signed_at && $document->driverSignatureUrl()) {
+            $svg = (new Writer(new ImageRenderer(new RendererStyle(180, 1), new SvgImageBackEnd)))->writeString($document->driverSignatureUrl());
+            $documentQrDataUri = 'data:image/svg+xml;base64,'.base64_encode($svg);
+            $documentQrLabel = 'TANDA TANGAN PENGEMUDI';
+            $documentQrValue = $document->number;
+        }
 
-        return response()->view('documents.print', ['document' => $document->load('creator', 'events.user'), 'template' => $data['template']])
+        return response()->view('documents.print', ['document' => $document->load('creator', 'events.user'), 'template' => $data['template'], 'driverSignatureDataUri' => $driverSignatureDataUri, 'documentQrDataUri' => $documentQrDataUri, 'documentQrLabel' => $documentQrLabel, 'documentQrValue' => $documentQrValue])
             ->header('Cache-Control', 'no-store, private');
     }
 
-    public function store(Request $request)
+    public function store(Request $request, DocumentWorkflow $workflow)
     {
         abort_unless($request->user()->hasPermission('documents.create'), 403);
+        $submissionIntent = $request->validate(['submission_intent' => 'nullable|in:draft,submit'])['submission_intent'] ?? 'draft';
         $data = $this->validated($request);
-        $doc = DB::transaction(function () use ($data, $request) {
+        $doc = DB::transaction(function () use ($data, $request, $submissionIntent, $workflow) {
             $doc = DeliveryDocument::create([...$data, 'created_by' => $request->user()->id, 'status' => 'DRAFT']);
             $doc->update(['number' => ($doc->type === 'SCRAP' ? 'SMB' : 'SPB').'-'.now()->format('Ym').'-'.str_pad($doc->id, 6, '0', STR_PAD_LEFT)]);
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'created', 'to_status' => 'DRAFT']);
-            $roles = app(ApprovalConfiguration::class)->active($doc->type)['draft_notice_roles'] ?? [];
-            app(DocumentNotifications::class)->send(User::where('access_status', 'approved')->where('is_active', true)->whereIn('role', $roles)->get(), $doc, 'New document - '.$doc->driver_name.' - '.$doc->plate_number.' (draft).');
+            if ($doc->type === 'SCRAP' && $submissionIntent === 'submit') {
+                $workflow->transition($doc, $request->user(), 'submit');
+            }
 
             return $doc;
         });
 
-        return redirect()->route('documents.show', $doc)->with('success', 'Document saved. Unique number: '.$doc->number);
+        $message = $doc->fresh()->status === 'DRAFT'
+            ? 'Draft saved. Document number: '.$doc->number
+            : 'Document saved and sent for approval. Document number: '.$doc->number;
+
+        return redirect()->route('documents.show', $doc)->with('success', $message);
     }
 
     public function show(DeliveryDocument $document)
@@ -156,18 +195,24 @@ class DocumentController extends Controller
         return view('documents.form', compact('document'));
     }
 
-    public function update(Request $request, DeliveryDocument $document)
+    public function update(Request $request, DeliveryDocument $document, DocumentWorkflow $workflow)
     {
+        $submissionIntent = $request->validate(['submission_intent' => 'nullable|in:draft,submit'])['submission_intent'] ?? 'draft';
         $data = $this->validated($request);
-        DB::transaction(function () use ($document, $request, $data) {
+        DB::transaction(function () use ($document, $request, $data, $submissionIntent, $workflow) {
             $doc = DeliveryDocument::lockForUpdate()->findOrFail($document->id);
             abort_unless($doc->editableBy($request->user()), 403);
             abort_if($doc->type !== $data['type'], 422, 'Document type cannot be changed after a number is assigned.');
             $doc->update($data);
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'updated', 'from_status' => 'DRAFT', 'to_status' => 'DRAFT']);
+            if ($doc->type === 'SCRAP' && $submissionIntent === 'submit') {
+                $workflow->transition($doc, $request->user(), 'submit');
+            }
         });
 
-        return redirect()->route('documents.show', $document)->with('success', 'Draft updated.');
+        $message = $document->fresh()->status === 'DRAFT' ? 'Draft updated.' : 'Document updated and sent for approval.';
+
+        return redirect()->route('documents.show', $document)->with('success', $message);
     }
 
     public function transition(Request $request, DeliveryDocument $document, DocumentWorkflow $workflow)
@@ -178,7 +223,7 @@ class DocumentController extends Controller
             'notes' => 'nullable|string|max:3000', 'confirmed' => 'required|accepted',
             'receiver_name' => 'required_if:action,handover|nullable|string|max:150',
             'evidence' => 'required_if:action,handover|nullable|file|mimes:pdf,png,jpg,jpeg|max:5120',
-            'actual_actor_name' => [Rule::requiredIf($document->status === 'WAREHOUSE_PICKUP'), 'nullable', 'string', 'min:3', 'max:150'],
+            'actual_actor_name' => [Rule::requiredIf(in_array($document->status, ['WAREHOUSE_PICKUP', 'DRIVER_HANDOVER'], true)), 'nullable', 'string', 'min:3', 'max:150'],
         ]);
         $path = null;
         try {

@@ -16,6 +16,7 @@ class SecurityKioskTest extends TestCase
     use RefreshDatabase;
 
     private User $owner;
+
     private User $gate;
 
     protected function setUp(): void
@@ -54,7 +55,7 @@ class SecurityKioskTest extends TestCase
     public function test_gate_is_public_but_does_not_list_documents(): void
     {
         [$document] = $this->document();
-        $this->get(route('security.index'))->assertOk()->assertSee('No account or login is required')->assertDontSee($document->number);
+        $this->get(route('security.index'))->assertOk()->assertSee('No account or login is required')->assertSee('Scan Security QR')->assertSee('data-security-scan', false)->assertDontSee($document->number);
         $this->assertGuest();
         $this->get(route('security.show', $document))->assertForbidden();
         $this->get(route('security.evidence', $document))->assertForbidden();
@@ -68,6 +69,20 @@ class SecurityKioskTest extends TestCase
         $this->get(route('security.show', $document))->assertOk()->assertSee($document->number)->assertSee('B 123')->assertSee('Actual officer on duty');
         $this->get(route('security.evidence', $document))->assertOk();
         $this->assertGuest();
+    }
+
+    public function test_security_qr_is_printed_only_while_code_is_active(): void
+    {
+        [$document, $code] = $this->document();
+        $this->actingAs($this->owner);
+        foreach (['smb', 'delivery'] as $template) {
+            $this->get(route('documents.print', [$document, 'template' => $template]))->assertOk()
+                ->assertSee('PINDAI DI POS SECURITY')->assertSee($code)->assertSee('data:image/svg+xml;base64,', false);
+        }
+        $this->get(route('documents.print', [$document, 'template' => 'release']))->assertOk()->assertDontSee('PINDAI DI POS SECURITY');
+        $this->post(route('security.lookup'), ['security_code' => 'MKM-SMB:'.$code])->assertRedirect(route('security.show', $document));
+        $this->post(route('security.approve', $document), $this->payload($document))->assertRedirect(route('security.show', $document));
+        $this->get(route('documents.print', [$document->fresh(), 'template' => 'smb']))->assertOk()->assertDontSee('PINDAI DI POS SECURITY');
     }
 
     public function test_physical_checks_and_actual_security_name_are_required(): void

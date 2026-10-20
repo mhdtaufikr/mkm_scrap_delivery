@@ -4,6 +4,7 @@ use App\Http\Controllers\AccessRequestController;
 use App\Http\Controllers\ApprovalMasterController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\DriverSignatureController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PwaController;
@@ -37,6 +38,9 @@ Route::middleware(['auth', 'account.ready'])->group(function () {
     Route::post('/documents/{document}/transition', [DocumentController::class, 'transition'])->name('documents.transition');
     Route::get('/documents/{document}/evidence', [DocumentController::class, 'evidence'])->name('documents.evidence');
     Route::get('/documents/{document}/events/{event}/evidence', [DocumentController::class, 'eventEvidence'])->name('documents.event-evidence');
+    Route::get('/documents/{document}/driver-signature/qr', [DriverSignatureController::class, 'qr'])->name('driver-signature.qr');
+    Route::get('/documents/{document}/driver-signature/image', [DriverSignatureController::class, 'image'])->name('driver-signature.image');
+    Route::get('/documents/{document}/driver-signature/status', [DriverSignatureController::class, 'status'])->middleware('throttle:30,1')->name('driver-signature.status');
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
     Route::patch('/users/{user}', [UserController::class, 'update'])->name('users.update');
@@ -55,6 +59,9 @@ Route::middleware(['auth', 'account.ready'])->group(function () {
     Route::post('/masters/approvals/{flow}/publish', [ApprovalMasterController::class, 'publish'])->name('approvals.publish');
 });
 
+Route::get('/driver-signature/{token}', [DriverSignatureController::class, 'show'])->middleware('throttle:60,1')->name('driver-signature.show');
+Route::post('/driver-signature/{token}', [DriverSignatureController::class, 'store'])->middleware('throttle:10,1')->name('driver-signature.store');
+
 // No Security account session: a one-time document code grants access to one release only.
 Route::prefix('security')->name('security.')->group(function () {
     Route::get('/', [SecurityController::class, 'index']); // Existing bookmarks remain valid.
@@ -67,7 +74,7 @@ Route::prefix('security')->name('security.')->group(function () {
 
 // Canonical general-app URLs use a sibling PWA scope, never a parent of /security/.
 // Keep existing routes as action-compatible aliases while generated links use /app/.
-$generalRoutes = array_filter(Route::getRoutes()->getRoutes(), fn ($route) => $route->getName() && ! str_starts_with($route->getName(), 'security.') && $route->getName() !== 'auth.azure.callback');
+$generalRoutes = array_filter(Route::getRoutes()->getRoutes(), fn ($route) => $route->getName() && ! str_starts_with($route->getName(), 'security.') && ! in_array($route->getName(), ['driver-signature.show', 'driver-signature.store'], true) && $route->getName() !== 'auth.azure.callback');
 foreach ($generalRoutes as $legacyRoute) {
     $name = $legacyRoute->getName();
     $action = $legacyRoute->getAction();

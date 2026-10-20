@@ -3,11 +3,11 @@
 namespace App\Models;
 
 use App\Services\ApprovalConfiguration;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
 
 class DeliveryDocument extends Model
 {
@@ -15,7 +15,7 @@ class DeliveryDocument extends Model
 
     protected function casts(): array
     {
-        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean', 'security_code_issued_at' => 'datetime', 'security_code_used_at' => 'datetime'];
+        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean', 'security_code_issued_at' => 'datetime', 'security_code_used_at' => 'datetime', 'driver_signed_at' => 'datetime', 'sealed_at' => 'datetime'];
     }
 
     public const STATUSES = [
@@ -29,6 +29,8 @@ class DeliveryDocument extends Model
 
     public static function normalizeSecurityCode(string $code): string
     {
+        $code = preg_replace('/^\s*MKM[-\s]*SMB\s*:\s*/i', '', $code);
+
         return strtoupper(preg_replace('/[^A-Z0-9]/i', '', $code));
     }
 
@@ -60,6 +62,43 @@ class DeliveryDocument extends Model
         return $this->security_code_encrypted ? Crypt::decryptString($this->security_code_encrypted) : null;
     }
 
+    public static function driverTokenHash(string $token): string
+    {
+        return hash_hmac('sha256', $token, (string) config('app.key'));
+    }
+
+    public function issueDriverToken(): string
+    {
+        do {
+            $token = Str::random(64);
+            $hash = self::driverTokenHash($token);
+        } while (self::where('driver_token_hash', $hash)->exists());
+
+        $this->forceFill([
+            'driver_token_hash' => $hash,
+            'driver_token_encrypted' => Crypt::encryptString($token),
+            'driver_signed_name' => null,
+            'driver_signature_path' => null,
+            'driver_signed_at' => null,
+            'seal_actual_name' => null,
+            'sealed_at' => null,
+        ])->save();
+
+        return $token;
+    }
+
+    public function driverToken(): ?string
+    {
+        return $this->driver_token_encrypted ? Crypt::decryptString($this->driver_token_encrypted) : null;
+    }
+
+    public function driverSignatureUrl(): ?string
+    {
+        $token = $this->driverToken();
+
+        return $token ? route('driver-signature.show', ['token' => $token]) : null;
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -88,6 +127,12 @@ class DeliveryDocument extends Model
                 return false;
             }
             if ($role === 'PROC_DH' && $event->actor_role === 'PROC_STAFF' && $event->action === 'delegate') {
+                return true;
+            }
+            if ($role === 'PROC_DH' && $event->from_status === 'SALES_APPROVAL' && $event->action === 'approve') {
+                return true;
+            }
+            if ($role === 'HRD' && $event->from_status === 'HRA_APPROVAL' && $event->action === 'approve') {
                 return true;
             }
 

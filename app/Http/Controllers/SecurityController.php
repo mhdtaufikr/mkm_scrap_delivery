@@ -20,7 +20,7 @@ class SecurityController extends Controller
 
     public function lookup(Request $request)
     {
-        $data = $request->validate(['security_code' => ['required', 'string', 'min:12', 'max:20']]);
+        $data = $request->validate(['security_code' => ['required', 'string', 'min:12', 'max:32']]);
         $key = 'security-code:'.$request->ip();
         if (RateLimiter::tooManyAttempts($key, 10)) {
             throw ValidationException::withMessages(['security_code' => 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.']);
