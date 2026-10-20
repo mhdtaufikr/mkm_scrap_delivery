@@ -50,7 +50,9 @@ class DocumentFormTest extends TestCase
         $this->assertSame('', $d->driver_name);
         $this->assertSame('2026-10-17 09:30', $d->departure_at->format('Y-m-d H:i'));
         $this->assertSame('Forklift battery', $d->goods_description);
-        $this->get(route('documents.edit', $d))->assertOk()->assertSee('GOODS RELEASE - DISPOSAL')->assertSee('WF-00123');
+        $this->get(route('documents.edit', $d))->assertOk()
+            ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Goods Release - Disposal')
+            ->assertSee('paper-disposal-goods', false)->assertSee('DRAFT ONLY')->assertSee('WF-00123');
         $this->post('/documents', ['type' => 'SCRAP', 'document_date' => '2026-10-16', 'company' => 'Buyer', 'goods_description' => 'Goods'])
             ->assertSessionHasErrors(['driver_name', 'vehicle', 'plate_number', 'destination']);
     }

@@ -82,6 +82,9 @@
 .paper-signature.paper-attachment { text-align: left; }
 .paper-signature.paper-attachment label { text-align: center; }
 .paper-signature.paper-attachment select { margin-top: 12px; }
+.paper-disposal-goods { margin-top: 4px; border: 1px solid #222; }
+.paper-disposal-goods label { margin: 0; border-bottom: 1px solid #222; padding: 6px 8px; text-align: center; font-size: 10px; }
+.paper-disposal-goods textarea { min-height: 112px; resize: vertical; border: 0; border-radius: 0; padding: 8px; }
 .paper-preview-scroll { overflow-x: auto; padding: 0 12px 24px; }
 .document-print-page { background: #e9edf1; }
 .paper-print-sheet { width: 275mm; max-width: none; min-height: 175mm; margin: 0 auto; padding: 10mm; font-size: 11px; }
