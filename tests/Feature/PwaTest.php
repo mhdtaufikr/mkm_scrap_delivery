@@ -51,7 +51,7 @@ class PwaTest extends TestCase
 
     public function test_generated_general_routes_stay_inside_app_scope_and_legacy_paths_still_work(): void
     {
-        foreach (['dashboard', 'login', 'users.index', 'roles.index', 'approvals.index', 'security-admin.index', 'access.show'] as $name) {
+        foreach (['dashboard', 'login', 'users.index', 'roles.index', 'approvals.index', 'access.show'] as $name) {
             $this->assertStringContainsString('/app/', route($name));
         }
         $this->assertStringEndsWith('/security/gate', route('security.index'));

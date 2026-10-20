@@ -8,7 +8,6 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PwaController;
 use App\Http\Controllers\RoleController;
-use App\Http\Controllers\SecurityAdminController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserController;
@@ -56,24 +55,14 @@ Route::middleware(['auth', 'account.ready'])->group(function () {
     Route::post('/masters/approvals/{flow}/publish', [ApprovalMasterController::class, 'publish'])->name('approvals.publish');
 });
 
-// Security devices use their own narrowly scoped browser credential, never an SSO session.
-Route::get('/security/activate', [SecurityController::class, 'activation'])->name('security.activate');
-Route::post('/security/activate', [SecurityController::class, 'pair'])->middleware('throttle:5,15,security-pair:')->name('security.pair');
-Route::middleware('security.device')->prefix('security')->name('security.')->group(function () {
+// No Security account session: a one-time document code grants access to one release only.
+Route::prefix('security')->name('security.')->group(function () {
     Route::get('/', [SecurityController::class, 'index']); // Existing bookmarks remain valid.
     Route::get('/gate', [SecurityController::class, 'index'])->name('index');
+    Route::post('/lookup', [SecurityController::class, 'lookup'])->middleware('throttle:20,1,security-lookup:')->name('lookup');
     Route::get('/documents/{document}', [SecurityController::class, 'show'])->name('show');
     Route::get('/documents/{document}/evidence', [SecurityController::class, 'evidence'])->name('evidence');
     Route::post('/documents/{document}/approve', [SecurityController::class, 'approve'])->middleware('throttle:30,1,security-approve:')->name('approve');
-});
-Route::middleware(['auth', 'account.ready'])->prefix('masters/security')->name('security-admin.')->group(function () {
-    Route::get('/', [SecurityAdminController::class, 'index'])->name('index');
-    Route::post('/devices', [SecurityAdminController::class, 'device'])->name('devices.store');
-    Route::post('/devices/{device}/activate', [SecurityAdminController::class, 'resetDevice'])->name('devices.activate');
-    Route::post('/devices/{device}/revoke', [SecurityAdminController::class, 'revoke'])->name('devices.revoke');
-    Route::post('/officers', [SecurityAdminController::class, 'officer'])->name('officers.store');
-    Route::patch('/officers/{officer}', [SecurityAdminController::class, 'updateOfficer'])->name('officers.update');
-    Route::post('/officers/{officer}/pin', [SecurityAdminController::class, 'resetPin'])->name('officers.pin');
 });
 
 // Canonical general-app URLs use a sibling PWA scope, never a parent of /security/.

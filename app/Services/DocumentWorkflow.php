@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\DeliveryDocument;
-use App\Models\SecurityOfficer;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -23,9 +22,6 @@ class DocumentWorkflow
             }
             $doc->approval_snapshot = $definition;
             abort_unless($doc->actionableBy($actor), 403);
-            if ($action === 'release' && SecurityOfficer::where('user_id', $actor->id)->exists()) {
-                abort_unless(isset($context['security_device_id'], $context['security_officer_name']), 403, 'Use Security Gate and your personal PIN to approve goods release.');
-            }
             $actions = $doc->actions();
             if (! isset($actions[$action])) {
                 throw ValidationException::withMessages(['action' => 'The step has changed or the action is unavailable. Reload the page.']);
@@ -54,11 +50,14 @@ class DocumentWorkflow
             if ($action === 'handover') {
                 $doc->fill($handover);
             }
+            if ($action === 'handover' && $next === 'SECURITY') {
+                $doc->issueSecurityCode();
+            }
             if ($next === 'COMPLETED') {
                 $doc->completed_at = now();
             }
             $doc->save();
-            $doc->events()->create(['user_id' => $actor->id, 'actor_role' => $actor->role, 'action' => $action, 'action_label' => $actions[$action], 'status_label' => $doc->statusLabel(), 'from_status' => $from, 'to_status' => $next, 'notes' => $notes, 'evidence_path' => $action === 'handover' ? $doc->handover_path : null, ...array_intersect_key($context, array_flip(['security_device_id', 'security_device_name', 'security_officer_name']))]);
+            $doc->events()->create(['user_id' => $actor->id, 'actor_role' => $actor->role, 'action' => $action, 'action_label' => $actions[$action], 'status_label' => $doc->statusLabel(), 'from_status' => $from, 'to_status' => $next, 'notes' => $notes, 'evidence_path' => $action === 'handover' ? $doc->handover_path : null, ...array_intersect_key($context, array_flip(['security_device_id', 'security_device_name', 'security_officer_name', 'actual_actor_name']))]);
             $target = $definition['steps'][$next] ?? null;
             $roles = array_unique([...($target['notice_roles'] ?? []), ...($action === 'delegate' ? ($step['delegate_notice_roles'] ?? []) : []), ...(($target['actor_mode'] ?? '') === 'role' ? [$target['role_code']] : [])]);
             $ids = array_unique([$doc->created_by, ...(($target['actor_mode'] ?? '') === 'users' ? ($target['user_ids'] ?? []) : [])]);

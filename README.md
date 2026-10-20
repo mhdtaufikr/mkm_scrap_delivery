@@ -22,6 +22,8 @@ Jangan menjalankan key:generate ulang pada instalasi yang sudah memiliki APP_KEY
 
 `DatabaseSeeder` menjalankan RoleSeeder, ApprovalFlowSeeder, ExistingDocumentApprovalSeeder, dan LocalAccountSeeder. Untuk menjalankan ulang: `php artisan db:seed`.
 
+Setup akun dan flow operasional hasil mapping user dijalankan sekali dengan `php artisan db:seed --class=OperationalSetupSeeder`. Isi `WORKFLOW_INITIAL_PASSWORD` bila akun akan memakai login lokal; tanpa nilai tersebut akun baru dibuat SSO-only. Password existing tidak ditimpa.
+
 Seeder tidak menimpa password akun yang sudah ada, perubahan role/permission, atau master flow yang telah dikonfigurasi. Dokumen lama tanpa snapshot dibackfill ke flow awal, tanpa mengubah statusnya.
 
 Akun uji dibuat hanya jika APP_ENV=local dan LOCAL_DEMO_ACCOUNTS=true. Password awal berasal dari LOCAL_DEMO_PASSWORD di .env lokal. Semua akun uji wajib mengganti password pada login pertama.
@@ -61,16 +63,17 @@ Buka menu **Approval** dengan akun admin. Flow awal Monthly Scrap disediakan dar
 
 Validasi publish menolak tujuan hilang, putaran, tahap tidak terhubung, role/user tidak aktif, dan jalur barang keluar yang melewati bukti serah terima. Kode tahap tetap; ubah nama tampilannya bila perlu. Tambahkan semua tahap dahulu, atur hubungan antar tahap dan tahap awal, lalu publish.
 
-## Default Monthly Scrap
+## Operational Monthly Scrap
 
 Referensi kebutuhan: MOM Digitalisasi Surat Jalan 15 Oct 2026.pdf yang diberikan user. Dokumen ini menjadi referensi kebutuhan aplikasi.
 
-1. PPC menyimpan SMB dengan nomor unik. Security dan Staff Procurement menerima notifikasi draft serta pembawa barang.
-2. PPC mengajukan ke Staff Procurement.
-3. Staff memilih Next approval ke DH Procurement, atau Delegate & setujui dengan alasan wajib. Interpretasi awal Delegate: staff bertindak sebagai pelaksana delegasi lalu melanjutkan ke HRD; DH dan SH Procurement menerima notifikasi mengetahui.
-4. HRD melakukan approval.
-5. PPC mencatat penerima dan mengunggah bukti yang sudah ditandatangani pembawa serta penerima (PDF/JPG/PNG, maksimal 5 MB). PPC tidak dianggap menandatangani atas nama pihak lain.
-6. Security memeriksa dan mencatat persetujuan barang keluar.
+1. M. Najmal atau Mujib membuat SMB/SJ. Aji Bayu dan Faqih menerima notifikasi.
+2. Fisty Savira melakukan approval Procurement & Sales; Masrukhan dan Aji W menerima notifikasi.
+3. Rahmat W melakukan approval HRA. Agus F menerima notifikasi dan juga dapat bertindak sebagai approver pengganti.
+4. Akun notifikasi Yasin membuka tahap pickup warehouse dan mengisi nama pelaksana aktual.
+5. PPC mencatat nama driver/penerima dan mengunggah bukti tanda tangan (PDF/JPG/PNG, maksimal 5 MB). Sistem menerbitkan unique number acak untuk driver.
+6. Security membuka PWA tanpa login, memasukkan unique number, memeriksa seluruh informasi dan bukti, mengisi nama petugas aktual, lalu memvalidasi barang, kendaraan, serta dokumen.
+7. Unique number ditutup dan status menjadi Completed. Email Yasin hanya tujuan notifikasi, bukan identitas semua petugas Security.
 
 Semua tindakan mencatat user, role saat bertindak, waktu, label tindakan/status, catatan, dan perpindahan status. Draft hanya dapat diedit pembuat yang punya permission. Approval memakai transaksi dan row lock. Bukti aktif dibatalkan jika dikembalikan ke draft; bukti historis tetap dapat diunduh dari riwayat oleh user internal terautentikasi. Bukti disimpan privat.
 
@@ -109,11 +112,11 @@ Each document provides three print previews: SMB, Surat Jalan Non Produksi (LD-G
 Delegated Procurement approvals print the actual Staff approver, timestamp and a delegation label in the delivery-note and release-letter Procurement spaces. The reason is shown as a short excerpt; the complete reason remains in document history. Returned submission cycles do not contribute signatures to the current printed form. Workflow recipients receive immediate application notifications and queued SMTP emails; the worker drains `access-mail,workflow-mail`.
 
 
-## Security Gate (no SSO)
+## Security Gate (no login)
 
-Security officers use `/security` on a browser registered by an administrator. Administration > Security access (`/masters/security`) manages one-time browser activation, officer names, personal six-digit PIN resets and revocation. Only registered browsers can read Security documents; a valid officer PIN and completed physical-check confirmations are required to approve release. The normal workflow, handover-evidence check and stale-document protection remain enforced. Every release records officer and post snapshots. See [docs/SECURITY_GATE.md](docs/SECURITY_GATE.md) for setup and operations.
+Security membuka `/security/gate` tanpa akun, aktivasi perangkat, atau PIN. Halaman awal tidak menampilkan daftar dokumen. Unique number acak hanya membuka satu SMB; petugas wajib mengisi nama aktual dan menyelesaikan pemeriksaan barang, kendaraan, serta dokumen. Bukti serah-terima, stale-document protection, row lock, audit, rate limit, dan pencegahan pemakaian ulang tetap diberlakukan. Lihat [docs/SECURITY_GATE.md](docs/SECURITY_GATE.md).
 
 
 ## Two installable PWAs
 
-Open `/app/install` for **MKM Scrap Delivery** or `/security/install` for **MKM Security Gate**. Separate manifests, IDs, PNG icons and sibling worker scopes prevent general-app navigation from enclosing the Security app. Existing links and the Azure callback remain supported; generated main links now use `/app/...`. Install Security first, then activate it inside the installed app. Transactions require online server validation. See [docs/PWA.md](docs/PWA.md) for HTTPS, shared-origin storage and deployment verification.
+Open `/app/install` for **MKM Scrap Delivery** or `/security/install` for **MKM Security Gate**. Separate manifests, IDs, PNG icons and sibling worker scopes prevent general-app navigation from enclosing the Security app. Security needs no login; access is per-document through the driver's unique number. Transactions require online server validation. See [docs/PWA.md](docs/PWA.md) for HTTPS, shared-origin storage and deployment verification.

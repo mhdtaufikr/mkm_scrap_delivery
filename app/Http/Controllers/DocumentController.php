@@ -178,6 +178,7 @@ class DocumentController extends Controller
             'notes' => 'nullable|string|max:3000', 'confirmed' => 'required|accepted',
             'receiver_name' => 'required_if:action,handover|nullable|string|max:150',
             'evidence' => 'required_if:action,handover|nullable|file|mimes:pdf,png,jpg,jpeg|max:5120',
+            'actual_actor_name' => [Rule::requiredIf($document->status === 'WAREHOUSE_PICKUP'), 'nullable', 'string', 'min:3', 'max:150'],
         ]);
         $path = null;
         try {
@@ -186,7 +187,7 @@ class DocumentController extends Controller
                 $path = $request->file('evidence')->store('handover', 'local');
                 $handover = ['handover_path' => $path, 'receiver_name' => $data['receiver_name']];
             }
-            $workflow->transition($document, $request->user(), $data['action'], $data['notes'] ?? null, $handover);
+            $workflow->transition($document, $request->user(), $data['action'], $data['notes'] ?? null, $handover, ['actual_actor_name' => $data['actual_actor_name'] ?? null]);
         } catch (\Throwable $e) {
             if ($path) {
                 Storage::disk('local')->delete($path);

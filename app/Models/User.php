@@ -80,6 +80,10 @@ class User extends Authenticatable
         'PROC_STAFF' => 'Staff Procurement', 'PROC_DH' => 'Dept. Head Procurement',
         'PROC_SH' => 'Section Head Procurement', 'HRD' => 'Dept. Head HRD',
         'SECURITY' => 'Security', 'VIEWER' => 'Viewer',
+        'PPC_SH' => 'PPC Section Head', 'PPC_DH' => 'PPC Department Head',
+        'WAREHOUSE_PICKUP' => 'Warehouse Pickup PIC', 'SALES' => 'Sales Approver',
+        'SALES_SH' => 'Procurement & Sales Section Head', 'SALES_DH' => 'Procurement & Sales Department Head',
+        'HRA_DH' => 'HRA Department Head', 'HRA_SH' => 'HRA Section Head',
     ];
 
     public function roleLabel(): string

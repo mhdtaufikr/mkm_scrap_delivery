@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Services\ApprovalConfiguration;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,15 +15,50 @@ class DeliveryDocument extends Model
 
     protected function casts(): array
     {
-        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean'];
+        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean', 'security_code_issued_at' => 'datetime', 'security_code_used_at' => 'datetime'];
     }
 
     public const STATUSES = [
         'DRAFT' => 'Draft', 'PROC_STAFF' => 'Procurement Staff Review',
         'PROC_DH' => 'Procurement DH Approval', 'HRD' => 'HRD Approval',
         'HANDOVER' => 'Signed Handover', 'SECURITY' => 'Security Inspection',
+        'SALES_APPROVAL' => 'Procurement & Sales Approval', 'HRA_APPROVAL' => 'HRA Approval',
+        'WAREHOUSE_PICKUP' => 'Warehouse Pickup', 'DRIVER_HANDOVER' => 'Driver Handover & Signature',
         'COMPLETED' => 'Completed',
     ];
+
+    public static function normalizeSecurityCode(string $code): string
+    {
+        return strtoupper(preg_replace('/[^A-Z0-9]/i', '', $code));
+    }
+
+    public static function securityCodeHash(string $code): string
+    {
+        return hash_hmac('sha256', self::normalizeSecurityCode($code), (string) config('app.key'));
+    }
+
+    public function issueSecurityCode(): string
+    {
+        do {
+            $raw = strtoupper(Str::random(12));
+            $hash = self::securityCodeHash($raw);
+        } while (self::where('security_code_hash', $hash)->exists());
+
+        $code = implode('-', str_split($raw, 4));
+        $this->forceFill([
+            'security_code_hash' => $hash,
+            'security_code_encrypted' => Crypt::encryptString($code),
+            'security_code_issued_at' => now(),
+            'security_code_used_at' => null,
+        ])->save();
+
+        return $code;
+    }
+
+    public function securityCode(): ?string
+    {
+        return $this->security_code_encrypted ? Crypt::decryptString($this->security_code_encrypted) : null;
+    }
 
     public function creator(): BelongsTo
     {

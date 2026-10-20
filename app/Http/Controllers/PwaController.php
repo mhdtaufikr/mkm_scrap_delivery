@@ -18,7 +18,7 @@ class PwaController extends Controller
 
         return response()->json([
             'id' => $p['scope'].($kind === 'security' ? 'mkm-security-gate' : 'mkm-scrap-delivery'),
-            'name' => $p['name'], 'short_name' => $p['short_name'], 'description' => $kind === 'security' ? 'Security inspection and personal PIN approval for MKM goods release.' : 'MKM goods release requests, approvals and document tracking.',
+            'name' => $p['name'], 'short_name' => $p['short_name'], 'description' => $kind === 'security' ? 'No-login unique-number validation for MKM goods release.' : 'MKM goods release requests, approvals and document tracking.',
             'lang' => 'en', 'start_url' => $p['start_url'], 'scope' => $p['scope'], 'display' => 'standalone', 'background_color' => '#f3f6f8', 'theme_color' => $p['color'],
             'icons' => [
                 ['src' => asset('pwa/icons/'.$kind.'-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
