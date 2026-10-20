@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ScrapApplicationTest extends TestCase
@@ -74,14 +75,12 @@ class ScrapApplicationTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_first_login_requires_password_change(): void
+    public function test_first_login_does_not_force_password_change(): void
     {
         $user = $this->account('ADMIN', ['must_change_password' => true]);
-        $this->actingAs($user)->get('/home')->assertRedirect(route('password.edit'));
-        $this->get('/password')->assertOk();
-        $this->put('/password', ['current_password' => 'password', 'password' => 'NewPassword123', 'password_confirmation' => 'NewPassword123'])->assertRedirect(route('dashboard'));
-        $this->assertFalse($user->fresh()->must_change_password);
-        $this->assertTrue(Hash::check('NewPassword123', $user->fresh()->password));
+        $this->actingAs($user)->get('/home')->assertOk();
+        $this->get('/password')->assertOk()->assertDontSee('Change your initial password before continuing.');
+        $this->assertTrue(Hash::check('password', $user->fresh()->password));
     }
 
     public function test_only_admin_can_create_and_manage_users_without_self_lockout(): void
@@ -92,7 +91,7 @@ class ScrapApplicationTest extends TestCase
         $admin = $this->account('ADMIN');
         $this->actingAs($admin)->get('/users')->assertOk();
         $this->post('/users', ['name' => 'HRD Staff', 'username' => 'hrd', 'email' => 'hrd@example.com', 'role' => 'HRD', 'password' => 'Temporary123', 'password_confirmation' => 'Temporary123'])->assertSessionHasNoErrors();
-        $this->assertDatabaseHas('users', ['username' => 'hrd', 'role' => 'HRD', 'must_change_password' => true]);
+        $this->assertDatabaseHas('users', ['username' => 'hrd', 'role' => 'HRD', 'must_change_password' => false]);
         $this->patch(route('users.update', $admin), ['role' => 'VIEWER', 'is_active' => 0])->assertStatus(422);
         $this->patch(route('users.update', $ppc), ['role' => 'VIEWER', 'is_active' => 0])->assertSessionHasNoErrors();
         $this->assertFalse($ppc->fresh()->is_active);
@@ -210,13 +209,12 @@ class ScrapApplicationTest extends TestCase
         $this->get(route('documents.event-evidence', [$other, $event->id]))->assertNotFound();
     }
 
-    public function test_disposal_requires_reference_and_cannot_enter_scrap_approval(): void
+    public function test_disposal_cannot_be_created_or_enter_scrap_approval(): void
     {
         $ppc = $this->account();
-        $this->actingAs($ppc)->post('/documents', $this->data(['type' => 'DISPOSAL']))->assertSessionHasErrors('workflow_reference');
-        $this->post('/documents', $this->data(['type' => 'DISPOSAL', 'workflow_reference' => 'WF-SETTLED-001']))->assertSessionHasNoErrors();
-        $doc = DeliveryDocument::firstOrFail();
-        $this->assertStringStartsWith('SPB-', $doc->number);
+        $this->actingAs($ppc)->post('/documents', $this->data(['type' => 'DISPOSAL', 'workflow_reference' => 'WF-SETTLED-001']))->assertSessionHasErrors('type');
+        $this->assertDatabaseCount('delivery_documents', 0);
+        $doc = $this->document($ppc, 'DRAFT', ['type' => 'DISPOSAL', 'number' => 'SPB-LEGACY', 'workflow_reference' => 'WF-SETTLED-001']);
         $this->action($doc, 'submit')->assertForbidden();
         $this->get(route('documents.show', $doc))->assertOk()->assertSee('not integrated');
     }
@@ -241,6 +239,25 @@ class ScrapApplicationTest extends TestCase
         $this->assertNotNull($notice->fresh()->read_at);
     }
 
+    public function test_opening_notifications_marks_everything_read_and_paginates_compact_list(): void
+    {
+        $user = $this->account();
+        $document = $this->document($user);
+        foreach (range(1, 15) as $index) {
+            $user->notifications()->create([
+                'id' => (string) Str::uuid(),
+                'type' => 'TestNotification',
+                'data' => ['document_id' => $document->id, 'number' => $document->number, 'message' => 'Update '.$index],
+            ]);
+        }
+
+        $this->assertSame(15, $user->unreadNotifications()->count());
+        $this->actingAs($user)->get(route('notifications.index'))->assertOk()
+            ->assertSee('Opening this page marks all notifications as read.')
+            ->assertViewHas('notifications', fn ($notifications) => $notifications->count() === 12 && $notifications->lastPage() === 2);
+        $this->assertSame(0, $user->unreadNotifications()->count());
+    }
+
     public function test_admin_can_reset_other_accounts_but_a_user_cannot_reset_another_password(): void
     {
         $admin = $this->account('ADMIN');
@@ -250,7 +267,7 @@ class ScrapApplicationTest extends TestCase
         $this->actingAs($admin)->put(route('users.password', $admin), $data)->assertStatus(422);
         $this->put(route('users.password', $ppc), $data)->assertSessionHasNoErrors();
         $this->assertTrue(Hash::check($data['password'], $ppc->fresh()->password));
-        $this->assertTrue($ppc->fresh()->must_change_password);
+        $this->assertFalse($ppc->fresh()->must_change_password);
     }
 
     public function test_action_confirmation_and_private_file_validation_cannot_be_bypassed(): void
@@ -272,7 +289,7 @@ class ScrapApplicationTest extends TestCase
     {
         Storage::fake('local');
         $this->artisan('app:create-admin')->assertSuccessful();
-        $this->assertDatabaseHas('users', ['username' => 'admin', 'role' => 'ADMIN', 'must_change_password' => true]);
+        $this->assertDatabaseHas('users', ['username' => 'admin', 'role' => 'ADMIN', 'must_change_password' => false]);
         Storage::disk('local')->assertExists('bootstrap-admin.txt');
         $original = Storage::disk('local')->get('bootstrap-admin.txt');
         $this->artisan('app:create-admin')->assertFailed();

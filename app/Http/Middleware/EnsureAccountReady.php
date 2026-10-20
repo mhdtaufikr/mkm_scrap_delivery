@@ -22,9 +22,6 @@ class EnsureAccountReady
         if ($request->user()->access_status !== 'approved' && ! Str::is(['access.*', 'profile.*', 'logout'], $routeName)) {
             return redirect()->route('access.show');
         }
-        if ($request->user()->must_change_password && $request->session()->get('auth_method') !== 'sso' && ! Str::is(['password.*', 'logout'], $routeName)) {
-            return redirect()->route('password.edit');
-        }
 
         return $next($request);
     }

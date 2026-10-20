@@ -24,7 +24,8 @@ class DocumentFormTest extends TestCase
             ->assertSee('Quick guide')->assertSee('Trip details')->assertSee('Save as draft')->assertSee('Save &amp; Send for Approval', false)
             ->assertSee('SURAT MUAT BARANG')->assertSee('data-goods-rows', false)
             ->assertSee('Paste from Excel')->assertSee('data-goods-paste', false)
-            ->assertSee('paper-signature paper-attachment', false)->assertSee('ATTACHMENTS');
+            ->assertSee('paper-signature paper-attachment', false)->assertSee('Ada dokumen lampiran fisik')
+            ->assertDontSee('Disposal - draft only')->assertDontSee('SURAT PENGELUARAN BARANG');
         $this->post('/documents', $this->payload())->assertRedirect()->assertSessionHasNoErrors();
         $d = DeliveryDocument::firstOrFail();
         $this->assertSame('EX-CKD', $d->items[0]['code']);
@@ -46,36 +47,27 @@ class DocumentFormTest extends TestCase
         $this->get(route('documents.print', [$d, 'template' => 'invalid']))->assertSessionHasErrors('template');
     }
 
-    public function test_disposal_accepts_its_own_fields_without_scrap_carrier_fields(): void
+    public function test_new_disposal_is_blocked_but_existing_disposal_remains_accessible(): void
     {
         $u = User::factory()->create(['role' => 'PPC']);
         $this->actingAs($u)->post('/documents', [
             'type' => 'DISPOSAL', 'document_date' => '2026-10-16',
             'release_date' => '2026-10-17', 'release_time' => '09:30',
             'company' => 'Disposal Buyer', 'goods_description' => 'Forklift battery', 'workflow_reference' => 'WF-00123',
-        ])->assertSessionHasNoErrors()->assertRedirect();
-        $d = DeliveryDocument::firstOrFail();
-        $this->assertSame('DISPOSAL', $d->type);
-        $this->assertStringStartsWith('SPB-', $d->number);
-        $this->assertSame('', $d->driver_name);
-        $this->assertSame('2026-10-17 09:30', $d->departure_at->format('Y-m-d H:i'));
-        $this->assertSame('Forklift battery', $d->goods_description);
+        ])->assertSessionHasErrors('type');
+        $this->assertDatabaseCount('delivery_documents', 0);
+
+        $d = DeliveryDocument::create([
+            'type' => 'DISPOSAL', 'number' => 'SPB-LEGACY', 'status' => 'DRAFT', 'created_by' => $u->id,
+            'document_date' => '2026-10-16', 'departure_at' => '2026-10-17 09:30', 'driver_name' => '',
+            'company' => 'Disposal Buyer', 'destination' => '', 'vehicle' => '', 'plate_number' => '',
+            'goods_description' => 'Forklift battery', 'workflow_reference' => 'WF-00123',
+        ]);
         $this->get(route('documents.edit', $d))->assertOk()
             ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Goods Release - Disposal')
             ->assertSee('paper-disposal-goods', false)->assertSee('DRAFT ONLY')->assertSee('WF-00123');
         $this->post('/documents', ['type' => 'SCRAP', 'document_date' => '2026-10-16', 'company' => 'Buyer', 'goods_description' => 'Goods'])
             ->assertSessionHasErrors(['driver_name', 'vehicle', 'plate_number', 'destination']);
-    }
-
-    public function test_disposal_requires_workflow_and_valid_complete_release_schedule(): void
-    {
-        $this->actingAs(User::factory()->create(['role' => 'PPC']));
-        $data = ['type' => 'DISPOSAL', 'document_date' => '2026-10-16', 'company' => 'Buyer', 'goods_description' => 'Goods'];
-        $this->post('/documents', $data)->assertSessionHasErrors('workflow_reference');
-        $data['workflow_reference'] = 'WF-1';
-        $this->post('/documents', [...$data, 'release_date' => '2026-10-17'])->assertSessionHasErrors('release_time');
-        $this->post('/documents', [...$data, 'release_date' => '2026-10-15', 'release_time' => '09:30'])->assertSessionHasErrors('departure_at');
-        $this->assertDatabaseCount('delivery_documents', 0);
     }
 
     public function test_invalid_rows_are_rejected_and_saved_items_cannot_change_after_submission(): void

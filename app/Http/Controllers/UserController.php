@@ -30,9 +30,9 @@ class UserController extends Controller
             'email' => 'required|email|max:255|unique:users', 'role' => ['required', Rule::exists('roles', 'code')->where('is_active', true)],
             'password' => ['required', 'confirmed', Password::min(10)->mixedCase()->numbers()],
         ]);
-        User::create([...$data, 'is_active' => true, 'must_change_password' => true]);
+        User::create([...$data, 'is_active' => true, 'must_change_password' => false]);
 
-        return back()->with('success', 'User created. The initial password must be changed on first login.');
+        return back()->with('success', 'User created. The password can be used without an initial change.');
     }
 
     public function update(Request $request, User $user)
@@ -87,10 +87,10 @@ class UserController extends Controller
         abort_if($user->is($request->user()), 422, 'Use Change Password for your own account.');
         $data = $request->validate(['password' => ['required', 'confirmed', Password::min(10)->mixedCase()->numbers()]]);
         DB::transaction(function () use ($user, $data) {
-            $user->update(['password' => $data['password'], 'must_change_password' => true, 'remember_token' => null]);
+            $user->update(['password' => $data['password'], 'must_change_password' => false, 'remember_token' => null]);
             DB::table('sessions')->where('user_id', $user->id)->delete();
         });
 
-        return back()->with('success', 'Temporary password saved. The user must change it on their next login.');
+        return back()->with('success', 'Password updated. The user can sign in without changing it again.');
     }
 }

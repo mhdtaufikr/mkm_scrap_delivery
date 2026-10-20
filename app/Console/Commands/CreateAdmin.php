@@ -21,8 +21,8 @@ class CreateAdmin extends Command
             return self::FAILURE;
         }
         $password = Str::password(20);
-        $user = User::create(['name' => $this->option('name'), 'username' => $this->option('username'), 'email' => $this->option('email'), 'password' => $password, 'role' => 'ADMIN', 'is_active' => true, 'must_change_password' => true]);
-        Storage::disk('local')->put('bootstrap-admin.txt', "MKM Scrap Delivery - initial local administrator\nUsername: {$user->username}\nEmail: {$user->email}\nTemporary password: {$password}\nChange this password on first login. Remove this file after saving credentials securely.\n");
+        $user = User::create(['name' => $this->option('name'), 'username' => $this->option('username'), 'email' => $this->option('email'), 'password' => $password, 'role' => 'ADMIN', 'is_active' => true, 'must_change_password' => false]);
+        Storage::disk('local')->put('bootstrap-admin.txt', "MKM Scrap Delivery - initial local administrator\nUsername: {$user->username}\nEmail: {$user->email}\nPassword: {$password}\nRemove this file after saving credentials securely.\n");
         $this->info('Administrator created. Temporary credentials: '.Storage::disk('local')->path('bootstrap-admin.txt'));
 
         return self::SUCCESS;

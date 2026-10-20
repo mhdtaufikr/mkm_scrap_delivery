@@ -66,7 +66,7 @@ class DocumentController extends Controller
         return view('documents.form', ['document' => new DeliveryDocument(['type' => 'SCRAP', 'document_date' => today()])]);
     }
 
-    private function validated(Request $request): array
+    private function validated(Request $request, ?DeliveryDocument $document = null): array
     {
         if (is_array($request->input('items'))) {
             $items = array_map(function ($item) {
@@ -85,7 +85,7 @@ class DocumentController extends Controller
             $request->merge(['departure_at' => $request->input('release_date').' '.$request->input('release_time')]);
         }
         $data = $request->validate([
-            'type' => ['required', Rule::in(['SCRAP', 'DISPOSAL'])], 'document_date' => 'required|date',
+            'type' => ['required', Rule::in([$document?->type ?? 'SCRAP'])], 'document_date' => 'required|date',
             'departure_at' => 'nullable|date|after_or_equal:document_date',
             'driver_name' => 'exclude_unless:type,SCRAP|required|string|max:150', 'company' => 'required|string|max:200',
             'destination' => 'exclude_unless:type,SCRAP|required|string|max:255', 'vehicle' => 'exclude_unless:type,SCRAP|required|string|max:100',
@@ -198,7 +198,7 @@ class DocumentController extends Controller
     public function update(Request $request, DeliveryDocument $document, DocumentWorkflow $workflow)
     {
         $submissionIntent = $request->validate(['submission_intent' => 'nullable|in:draft,submit'])['submission_intent'] ?? 'draft';
-        $data = $this->validated($request);
+        $data = $this->validated($request, $document);
         DB::transaction(function () use ($document, $request, $data, $submissionIntent, $workflow) {
             $doc = DeliveryDocument::lockForUpdate()->findOrFail($document->id);
             abort_unless($doc->editableBy($request->user()), 403);

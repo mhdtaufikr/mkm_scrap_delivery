@@ -30,13 +30,13 @@ class OperationalAccountSeeder extends Seeder
             $new = ! $user->exists;
             $user->fill([
                 'name' => $name, 'username' => $username, 'role' => $role,
-                'access_status' => 'approved', 'is_active' => true,
+                'access_status' => 'approved', 'is_active' => true, 'must_change_password' => false,
             ]);
             if ($new) {
                 $user->fill([
                     'password' => $local ? $password : Str::random(64),
                     'local_login_enabled' => $local,
-                    'must_change_password' => $local,
+                    'must_change_password' => false,
                 ]);
             }
             $user->save();

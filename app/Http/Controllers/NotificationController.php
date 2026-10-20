@@ -8,7 +8,11 @@ class NotificationController extends Controller
 {
     public function index(Request $request)
     {
-        return view('notifications.index', ['notifications' => $request->user()->notifications()->paginate(20)]);
+        $request->user()->unreadNotifications()->update(['read_at' => now()]);
+
+        return view('notifications.index', [
+            'notifications' => $request->user()->notifications()->latest()->paginate(12)->withQueryString(),
+        ]);
     }
 
     public function read(Request $request, string $notification)

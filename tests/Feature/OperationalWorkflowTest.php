@@ -21,7 +21,6 @@ class OperationalWorkflowTest extends TestCase
         config(['workflow.initial_password' => 'Temporary#2026']);
         $this->seed(OperationalSetupSeeder::class);
         $owner = User::where('username', 'mkm01868')->firstOrFail();
-        $owner->update(['must_change_password' => false]);
         $payload = [
             'type' => 'SCRAP', 'document_date' => '2026-10-20', 'driver_name' => 'Driver',
             'company' => 'Buyer', 'destination' => 'Bekasi', 'vehicle' => 'Truck',
@@ -55,7 +54,7 @@ class OperationalWorkflowTest extends TestCase
             'mkm02088' => 'SALES_SH', 'mkm001531' => 'HRA_DH', 'mkm01436' => 'HRA_SH',
         ];
         foreach ($expected as $username => $role) {
-            $this->assertDatabaseHas('users', ['username' => $username, 'role' => $role, 'local_login_enabled' => true, 'must_change_password' => true]);
+            $this->assertDatabaseHas('users', ['username' => $username, 'role' => $role, 'local_login_enabled' => true, 'must_change_password' => false]);
         }
 
         $owner = User::where('username', 'mkm01868')->firstOrFail();
@@ -80,7 +79,6 @@ class OperationalWorkflowTest extends TestCase
         $token = $document->fresh()->driverToken();
         $this->assertNotNull($token);
         $yasin = User::where('username', 'mkm01478')->firstOrFail();
-        $yasin->update(['must_change_password' => false]);
         $this->actingAs($yasin)->getJson(route('driver-signature.status', $document))->assertOk()->assertJson(['signed' => false]);
         $this->get(route('documents.print', [$document, 'template' => 'smb']))->assertOk()
             ->assertSee('TANDA TANGAN PENGEMUDI')->assertSee('data:image/svg+xml;base64,', false);
