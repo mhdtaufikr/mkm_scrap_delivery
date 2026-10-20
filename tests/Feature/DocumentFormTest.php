@@ -19,7 +19,10 @@ class DocumentFormTest extends TestCase
     public function test_form_saves_structured_items_and_renders_all_three_templates(): void
     {
         $u = User::factory()->create(['role' => 'PPC']);
-        $this->actingAs($u)->get('/documents/create')->assertOk()->assertSee('SURAT MUAT BARANG')->assertSee('data-goods-rows', false);
+        $this->actingAs($u)->get('/documents/create')->assertOk()
+            ->assertSee('Quick guide')->assertSee('Trip details')->assertSee('Save draft')
+            ->assertSee('SURAT MUAT BARANG')->assertSee('data-goods-rows', false)
+            ->assertSee('paper-signature paper-attachment', false)->assertSee('ATTACHMENTS');
         $this->post('/documents', $this->payload())->assertRedirect()->assertSessionHasNoErrors();
         $d = DeliveryDocument::firstOrFail();
         $this->assertSame('EX-CKD', $d->items[0]['code']);

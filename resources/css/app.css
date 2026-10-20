@@ -79,6 +79,9 @@
 .paper-items-editor input[name$="[remarks]"] { min-width: 120px; }
 .paper-signature { text-align: center; border-top: 1px solid #333; padding: 8px 5px 0; }
 .paper-signature input { margin-top: 12px; }
+.paper-signature.paper-attachment { text-align: left; }
+.paper-signature.paper-attachment label { text-align: center; }
+.paper-signature.paper-attachment select { margin-top: 12px; }
 .paper-preview-scroll { overflow-x: auto; padding: 0 12px 24px; }
 .document-print-page { background: #e9edf1; }
 .paper-print-sheet { width: 275mm; max-width: none; min-height: 175mm; margin: 0 auto; padding: 10mm; font-size: 11px; }
