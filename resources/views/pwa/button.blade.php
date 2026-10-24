@@ -1,1 +1,1 @@
-<button type="button" class="{{ $installClass ?? 'btn btn-secondary' }}" data-pwa-install>Install {{ ($pwaKind ?? 'general') === 'security' ? 'Security app' : 'app' }}</button>
+<button type="button" class="{{ $installClass ?? 'btn btn-secondary' }}" data-pwa-install>Pasang {{ ($pwaKind ?? 'general') === 'security' ? 'aplikasi Security' : 'aplikasi' }}</button>

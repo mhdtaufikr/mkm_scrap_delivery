@@ -93,27 +93,37 @@
 .paper-disposal-goods textarea { min-height: 112px; resize: vertical; border: 0; border-radius: 0; padding: 8px; }
 .paper-preview-scroll { overflow-x: auto; padding: 0 12px 24px; }
 .document-print-page { background: #e9edf1; }
-.paper-print-sheet { width: 275mm; max-width: none; min-height: 175mm; margin: 0 auto; padding: 7mm; font-size: 10px; }
+.paper-print-sheet { box-sizing: border-box; width: 275mm; max-width: none; min-height: 175mm; margin: 0 auto; padding: 7mm; font-size: 10px; }
 .paper-heading-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin: 15px 0 8px; }
 .paper-heading-fields > div { display: flex; gap: 6px; }
 .paper-heading-fields strong { flex: 0 0 145px; font-size: 10px; }
 .paper-heading-fields span { border-bottom: 1px solid #777; flex: 1; overflow-wrap: anywhere; }
 .paper-goods-caption { margin: 10px 0 5px; font-weight: 700; font-size: 10px; }
 .paper-goods td { height: 20px; padding-block: 3px; }
-.paper-smb-bottom { display: grid; grid-template-columns: .85fr 1.15fr 1fr; gap: 10px; margin-top: 8px; }
+.paper-smb-bottom { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr) minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+.paper-smb-bottom > * { min-width: 0; }
 .paper-smb-bottom p { margin: 3px 0; }
-.paper-smb-notes { font-size: 9px; line-height: 1.35; }
+.paper-smb-notes { padding: 6px 8px 0; font-size: 9px; line-height: 1.35; overflow-wrap: anywhere; }
 .paper-approval-name { min-height: 45px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 5px 0; font-size: 9px; }
 .paper-approval-name strong { font-size: 9px; line-height: 1.2; }
 .paper-approval-name small { display: block; font-size: 7px; margin-top: 2px; }
+.paper-approval-meta { display: flex; align-items: baseline; justify-content: center; gap: 4px; max-width: 100%; white-space: nowrap; }
+.paper-approval-meta small { display: inline; margin-top: 0; }
+.paper-approval-meta-stacked { flex-direction: column; align-items: center; gap: 1px; }
+.paper-approval-separator { color: #777; font-size: 7px; }
 .paper-approval-check { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border: 1.5px solid #087f5b; border-radius: 50%; color: #087f5b; font-size: 13px; font-weight: 700; line-height: 1; margin-bottom: 3px; }
 .paper-driver-signature { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; font-size: 9px; }
+.paper-smb-bottom .paper-approval-name { min-height: 58px; justify-content: flex-end; }
 .paper-driver-signature img, .paper-signature-image { display: block; width: 105px; height: 38px; object-fit: contain; mix-blend-mode: multiply; }
 .paper-driver-signature small { font-size: 7px; }
-.paper-signatures { margin-top: 8px; }
-.paper-signatures td { height: 70px; text-align: center; padding: 3px; }
-.paper-sign-line { margin-top: 5px; border-bottom: 1px dotted #777; min-height: 18px; }
-.paper-copy-colors { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 9px; }
+.paper-document-footer { break-inside: avoid; page-break-inside: avoid; }
+.paper-signatures { margin-top: 6px; }
+.paper-signatures th { height: 34px; padding: 4px 3px; vertical-align: middle; line-height: 1.25; }
+.paper-signatures td { height: 64px; text-align: center; vertical-align: bottom; padding: 2px 3px; }
+.paper-signatures .paper-approval-name { min-height: 43px; padding: 2px 0; overflow: visible; }
+.paper-signatures .paper-signature-image { width: 90px; height: 32px; }
+.paper-sign-line { margin-top: 2px; border-bottom: 1px dotted #777; min-height: 16px; line-height: 15px; }
+.paper-copy-colors { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 8px; }
 .paper-audit-foot { margin-top: 12px; padding-top: 5px; border-top: 1px solid #aaa; font-size: 8px; color: #555; }
 .paper-draft-mark { text-align: center; color: #9a3412; border: 1px dashed #9a3412; padding: 4px; margin-bottom: 8px; font-size: 10px; font-weight: 700; }
 .paper-letter { width: 190mm; min-height: 277mm; font-size: 11px; }
@@ -144,7 +154,7 @@
 @media print {
  body.document-print-page { background: white; }
  .paper-preview-scroll { overflow: visible; padding: 0; }
- .paper-print-sheet { width: 100%; min-height: 0; padding: 3mm; margin: 0; border: 1px solid #111; font-size: 9px; }
+ .paper-print-sheet { box-sizing: border-box; width: 100%; min-height: 0; padding: 3mm; margin: 0; border: 1px solid #111; font-size: 9px; }
  .paper-print-sheet .paper-brand { padding-bottom: 5px; gap: 12px; }
  .paper-print-sheet .paper-brand img { width: 68px; height: 34px; }
  .paper-print-sheet .paper-brand h1 { font-size: 17px; margin: 2px 0; }

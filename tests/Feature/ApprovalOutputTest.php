@@ -44,7 +44,7 @@ class ApprovalOutputTest extends TestCase
         foreach (['delivery', 'release'] as $template) {
             $response = $this->actingAs($owner)->get(route('documents.print', [$doc, 'template' => $template]))->assertOk()->assertSee('Delegating Staff')->assertSee('paper-approval-check', false)->assertSee('Disetujui oleh delegasi')->assertSee('Department head is away from the office.')->assertSee($doc->events()->where('action', 'delegate')->first()->created_at->format('d/m/Y H:i'));
             if ($template === 'delivery') {
-                $response->assertSee('DEPT HEAD / DELEGATE')->assertSee('HR &amp; ADM DEPT HEAD', false);
+                $response->assertSee('KEPALA DEPT.')->assertSee('KEPALA HR &amp; ADM', false);
             }
         }
     }
@@ -87,12 +87,15 @@ class ApprovalOutputTest extends TestCase
         Notification::assertSentTo($hrd, DocumentUpdated::class);
         Notification::assertNotSentTo([$dh, $sh], DocumentUpdated::class);
         foreach ([$dh, $sh, $hrd] as $recipient) {
-            Notification::assertSentTo($recipient, WorkflowUpdateMail::class, fn ($n) => $n->reason === 'Head is out of the office.' && $n->queue === 'workflow-mail' && $n->connection === 'database' && $n->afterCommit === true);
+            Notification::assertSentTo($recipient, WorkflowUpdateMail::class, fn ($n) => $n->reason === 'Head is out of the office.' && $n->connection === 'sync' && $n->afterCommit === true);
         }
         Notification::assertNotSentTo([$pending, $disabled], DocumentUpdated::class);
         Notification::assertNotSentTo([$pending, $disabled, $demo], WorkflowUpdateMail::class);
         $mail = (new WorkflowUpdateMail($doc->id, $doc->number, 'Delegated approval', 'HRD Approval', 'Head is out of the office.'))->toMail($dh);
         $this->assertSame(route('documents.show', $doc), $mail->actionUrl);
-        $this->assertContains('Reason / notes: Head is out of the office.', $mail->introLines);
+        $this->assertSame('mail.workflow-update', $mail->view);
+        $this->assertSame('Head is out of the office.', $mail->viewData['reason']);
+        $this->assertTrue($mail->viewData['trial']);
+        $this->assertSame('muhammad.taufik@ptmkm.co.id', $dh->routeNotificationForMail());
     }
 }

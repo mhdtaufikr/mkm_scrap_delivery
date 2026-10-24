@@ -66,8 +66,10 @@ Route::post('/driver-signature/{token}', [DriverSignatureController::class, 'sto
 Route::prefix('security')->name('security.')->group(function () {
     Route::get('/', [SecurityController::class, 'index']); // Existing bookmarks remain valid.
     Route::get('/gate', [SecurityController::class, 'index'])->name('index');
+    Route::get('/dashboard', [SecurityController::class, 'dashboard'])->middleware('throttle:60,1')->name('dashboard');
     Route::post('/lookup', [SecurityController::class, 'lookup'])->middleware('throttle:20,1,security-lookup:')->name('lookup');
     Route::get('/documents/{document}', [SecurityController::class, 'show'])->name('show');
+    Route::get('/documents/{document}/status', [SecurityController::class, 'status'])->middleware('throttle:30,1')->name('status');
     Route::get('/documents/{document}/evidence', [SecurityController::class, 'evidence'])->name('evidence');
     Route::post('/documents/{document}/approve', [SecurityController::class, 'approve'])->middleware('throttle:30,1,security-approve:')->name('approve');
 });

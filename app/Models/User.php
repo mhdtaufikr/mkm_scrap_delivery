@@ -100,4 +100,13 @@ class User extends Authenticatable
     {
         return $this->access_status === 'approved' && $this->is_active && $this->roleRecord?->is_active && in_array($permission, $this->roleRecord->permissions ?? [], true);
     }
+
+    public function routeNotificationForMail(): string
+    {
+        $trialRecipient = config('workflow.trial_recipient');
+
+        return config('workflow.trial_mode') && filter_var($trialRecipient, FILTER_VALIDATE_EMAIL)
+            ? $trialRecipient
+            : $this->email;
+    }
 }

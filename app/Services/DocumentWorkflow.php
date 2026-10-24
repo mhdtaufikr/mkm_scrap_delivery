@@ -47,14 +47,15 @@ class DocumentWorkflow
                 throw ValidationException::withMessages(['action' => 'The driver must submit a signature before MKM verification.']);
             }
             $doc->status = $next;
+            if ($action === 'submit' && ! $doc->security_code_hash) {
+                $doc->issueSecurityCode();
+            }
             if ($action === 'return') {
                 $doc->fill([
                     'handover_path' => null, 'receiver_name' => null, 'pickup_actual_name' => null,
                     'driver_signed_name' => null, 'driver_signature_path' => null, 'driver_signed_at' => null,
                     'driver_token_hash' => null, 'driver_token_encrypted' => null,
                     'seal_actual_name' => null, 'sealed_at' => null,
-                    'security_code_hash' => null, 'security_code_encrypted' => null,
-                    'security_code_issued_at' => null, 'security_code_used_at' => null,
                 ]);
             }
             if ($action === 'handover') {
@@ -63,16 +64,14 @@ class DocumentWorkflow
             if ($action === 'handover' && $next === 'SECURITY') {
                 $doc->issueSecurityCode();
             }
-            if ($from === 'WAREHOUSE_PICKUP' && $next === 'DRIVER_HANDOVER') {
-                $doc->pickup_actual_name = $context['actual_actor_name'] ?? null;
+            if ($next === 'DRIVER_HANDOVER') {
                 $doc->issueDriverToken();
             }
-            if ($from === 'DRIVER_HANDOVER' && $next === 'SECURITY') {
-                $doc->seal_actual_name = $context['actual_actor_name'] ?? null;
+            if ($from === 'DRIVER_HANDOVER' && $action === 'release') {
+                $doc->seal_actual_name = $context['security_officer_name'] ?? $context['actual_actor_name'] ?? null;
                 $doc->sealed_at = now();
                 $doc->handover_path = $doc->driver_signature_path;
                 $doc->receiver_name = $doc->driver_signed_name;
-                $doc->issueSecurityCode();
             }
             if ($next === 'COMPLETED') {
                 $doc->completed_at = now();
@@ -91,6 +90,10 @@ class DocumentWorkflow
             $noticeRoles = array_unique([...($target['notice_roles'] ?? []), ...($action === 'delegate' ? ($step['delegate_notice_roles'] ?? []) : [])]);
             $informational = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->where(fn ($q) => $q->whereIn('role', $noticeRoles)->orWhere('id', $doc->created_by))->whereKeyNot($actor->id)->whereNotIn('id', $approvers->pluck('id'))->get();
             app(DocumentNotifications::class)->sendInformational($informational, $doc, $message, $notes);
+            $yasin = User::where('username', 'mkm01478')->where('access_status', 'approved')->where('is_active', true)->first();
+            if ($yasin && $yasin->id !== $actor->id && ! $approvers->contains('id', $yasin->id) && ! $informational->contains('id', $yasin->id)) {
+                app(DocumentNotifications::class)->sendInformational(collect([$yasin]), $doc, 'Notifikasi Yasin · '.$message, $notes);
+            }
         });
     }
 }

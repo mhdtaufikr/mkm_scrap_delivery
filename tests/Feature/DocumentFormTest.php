@@ -21,11 +21,11 @@ class DocumentFormTest extends TestCase
     {
         $u = User::factory()->create(['role' => 'PPC']);
         $this->actingAs($u)->get('/documents/create')->assertOk()
-            ->assertSee('Quick guide')->assertSee('Trip details')->assertSee('Save as draft')->assertSee('Save &amp; Send for Approval', false)
+            ->assertSee('Panduan singkat')->assertSee('Data perjalanan')->assertSee('Simpan sebagai draf')->assertSee('Simpan &amp; kirim untuk persetujuan', false)
             ->assertSee('SURAT MUAT BARANG')->assertSee('data-goods-rows', false)
-            ->assertSee('Paste from Excel')->assertSee('data-goods-paste', false)
+            ->assertSee('Tempel dari Excel')->assertSee('data-goods-paste', false)
             ->assertSee('paper-signature paper-attachment', false)->assertSee('Ada dokumen lampiran fisik')
-            ->assertDontSee('Disposal - draft only')->assertDontSee('SURAT PENGELUARAN BARANG');
+            ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Berat bersih (kg)');
         $this->post('/documents', $this->payload())->assertRedirect()->assertSessionHasNoErrors();
         $d = DeliveryDocument::firstOrFail();
         $this->assertSame('EX-CKD', $d->items[0]['code']);
@@ -47,25 +47,32 @@ class DocumentFormTest extends TestCase
         $this->get(route('documents.print', [$d, 'template' => 'invalid']))->assertSessionHasErrors('template');
     }
 
-    public function test_new_disposal_is_blocked_but_existing_disposal_remains_accessible(): void
+    public function test_disposal_uses_automatic_delivery_number_and_weight_difference(): void
     {
         $u = User::factory()->create(['role' => 'PPC']);
         $this->actingAs($u)->post('/documents', [
             'type' => 'DISPOSAL', 'document_date' => '2026-10-16',
             'release_date' => '2026-10-17', 'release_time' => '09:30',
-            'company' => 'Disposal Buyer', 'goods_description' => 'Forklift battery', 'workflow_reference' => 'WF-00123',
-        ])->assertSessionHasErrors('type');
-        $this->assertDatabaseCount('delivery_documents', 0);
+            'driver_name' => 'Driver Disposal', 'company' => 'Disposal Buyer', 'destination' => 'Jakarta', 'vehicle' => 'Truck', 'plate_number' => 'B 1234 DP', 'workflow_reference' => 'WF-00123',
+            'items' => [['name' => 'Forklift battery', 'quantity' => 1, 'unit' => 'kg']],
+            'form_details' => ['net_weight' => 120, 'gross_weight' => 135],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $d = DeliveryDocument::firstOrFail();
+        $this->assertSame('MKM/JKT/0001/X/2026', $d->number);
+        $this->assertSame(120, $d->form_details['net_weight']);
+        $this->assertSame(135, $d->form_details['gross_weight']);
+        $this->get(route('documents.print', [$d, 'template' => 'delivery']))->assertOk()
+            ->assertSee('MKM/JKT/0001/X/2026')->assertSee('BERAT BERSIH (KG)')->assertSee('15');
 
-        $d = DeliveryDocument::create([
+        $legacy = DeliveryDocument::create([
             'type' => 'DISPOSAL', 'number' => 'SPB-LEGACY', 'status' => 'DRAFT', 'created_by' => $u->id,
             'document_date' => '2026-10-16', 'departure_at' => '2026-10-17 09:30', 'driver_name' => '',
             'company' => 'Disposal Buyer', 'destination' => '', 'vehicle' => '', 'plate_number' => '',
             'goods_description' => 'Forklift battery', 'workflow_reference' => 'WF-00123',
         ]);
-        $this->get(route('documents.edit', $d))->assertOk()
+        $this->get(route('documents.edit', $legacy))->assertOk()
             ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Goods Release - Disposal')
-            ->assertSee('paper-disposal-goods', false)->assertSee('DRAFT ONLY')->assertSee('WF-00123');
+            ->assertSee('Berat bersih (kg)')->assertSee('DRAFT ONLY')->assertSee('WF-00123');
         $this->post('/documents', ['type' => 'SCRAP', 'document_date' => '2026-10-16', 'company' => 'Buyer', 'goods_description' => 'Goods'])
             ->assertSessionHasErrors(['driver_name', 'vehicle', 'plate_number', 'destination']);
     }

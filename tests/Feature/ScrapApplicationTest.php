@@ -209,14 +209,18 @@ class ScrapApplicationTest extends TestCase
         $this->get(route('documents.event-evidence', [$other, $event->id]))->assertNotFound();
     }
 
-    public function test_disposal_cannot_be_created_or_enter_scrap_approval(): void
+    public function test_disposal_uses_the_same_approval_flow_as_scrap(): void
     {
         $ppc = $this->account();
-        $this->actingAs($ppc)->post('/documents', $this->data(['type' => 'DISPOSAL', 'workflow_reference' => 'WF-SETTLED-001']))->assertSessionHasErrors('type');
-        $this->assertDatabaseCount('delivery_documents', 0);
-        $doc = $this->document($ppc, 'DRAFT', ['type' => 'DISPOSAL', 'number' => 'SPB-LEGACY', 'workflow_reference' => 'WF-SETTLED-001']);
-        $this->action($doc, 'submit')->assertForbidden();
-        $this->get(route('documents.show', $doc))->assertOk()->assertSee('not integrated');
+        $this->actingAs($ppc)->post('/documents', [
+            'type' => 'DISPOSAL', 'document_date' => '2026-10-16', 'release_date' => '2026-10-16', 'release_time' => '09:00',
+            'driver_name' => 'Driver Disposal', 'company' => 'Buyer', 'destination' => 'Jakarta', 'vehicle' => 'Truck', 'plate_number' => 'B 1234 DP', 'workflow_reference' => 'WF-SETTLED-001',
+            'items' => [['name' => 'Disposal material', 'quantity' => 1, 'unit' => 'kg']], 'form_details' => ['net_weight' => 10, 'gross_weight' => 12], 'submission_intent' => 'submit',
+        ])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('delivery_documents', ['type' => 'DISPOSAL', 'number' => 'MKM/JKT/0001/X/2026']);
+        $disposal = DeliveryDocument::latest('id')->firstOrFail();
+        $this->assertSame('PROC_STAFF', $disposal->status);
+        $this->assertNotNull($disposal->securityCode());
     }
 
     public function test_filters_counts_queue_and_notifications_follow_the_current_user(): void

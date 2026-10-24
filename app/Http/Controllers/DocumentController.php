@@ -85,14 +85,14 @@ class DocumentController extends Controller
             $request->merge(['departure_at' => $request->input('release_date').' '.$request->input('release_time')]);
         }
         $data = $request->validate([
-            'type' => ['required', Rule::in([$document?->type ?? 'SCRAP'])], 'document_date' => 'required|date',
+            'type' => ['required', Rule::in($document ? [$document->type] : ['SCRAP', 'DISPOSAL'])], 'document_date' => 'required|date',
             'departure_at' => 'nullable|date|after_or_equal:document_date',
-            'driver_name' => 'exclude_unless:type,SCRAP|required|string|max:150', 'company' => 'required|string|max:200',
-            'destination' => 'exclude_unless:type,SCRAP|required|string|max:255', 'vehicle' => 'exclude_unless:type,SCRAP|required|string|max:100',
-            'plate_number' => 'exclude_unless:type,SCRAP|required|string|max:30', 'goods_description' => 'nullable|required_if:type,DISPOSAL|required_without:items|string|max:5000',
-            'workflow_reference' => 'nullable|required_if:type,DISPOSAL|string|max:100', 'notes' => 'nullable|string|max:3000',
+            'driver_name' => 'required|string|max:150', 'company' => 'required|string|max:200',
+            'destination' => 'required|string|max:255', 'vehicle' => 'required|string|max:100',
+            'plate_number' => 'required|string|max:30', 'goods_description' => 'nullable|required_without:items|string|max:5000',
+            'workflow_reference' => 'nullable|string|max:100', 'notes' => 'nullable|string|max:3000',
             'items' => 'nullable|array|min:1|max:50',
-            'items.*' => 'array:code,name,quantity,unit,pallet,posts,remarks',
+            'items.*' => 'array:code,name,quantity,unit,pallet,posts,remarks,net_weight,gross_weight',
             'items.*.code' => 'nullable|string|max:60',
             'items.*.name' => 'required|string|max:255',
             'items.*.quantity' => 'required|numeric|gt:0|max:999999999',
@@ -100,10 +100,14 @@ class DocumentController extends Controller
             'items.*.pallet' => 'nullable|string|max:60',
             'items.*.posts' => 'nullable|string|max:60',
             'items.*.remarks' => 'nullable|string|max:255',
-            'form_details' => 'nullable|array:delivery_number,identity_number,lot,department,loader_name,attachments,letter_city,letter_number,recipient_hr,recipient_ppc,sales_reference,sales_reference_date,origin_department,disposal_date,sale_date,sale_time,buyer_contact,location',
+            'items.*.net_weight' => 'nullable|numeric|min:0|max:999999999',
+            'items.*.gross_weight' => 'nullable|numeric|gte:items.*.net_weight|max:999999999',
+            'form_details' => 'nullable|array:delivery_number,identity_number,lot,net_weight,gross_weight,department,loader_name,attachments,letter_city,letter_number,recipient_hr,recipient_ppc,sales_reference,sales_reference_date,origin_department,disposal_date,sale_date,sale_time,buyer_contact,location',
             'form_details.delivery_number' => 'nullable|string|max:100',
             'form_details.identity_number' => 'nullable|string|max:60',
             'form_details.lot' => 'nullable|string|max:60',
+            'form_details.net_weight' => 'nullable|required_if:type,DISPOSAL|numeric|min:0|max:999999999',
+            'form_details.gross_weight' => 'nullable|required_if:type,DISPOSAL|numeric|gte:form_details.net_weight|max:999999999',
             'form_details.department' => 'nullable|string|max:150',
             'form_details.loader_name' => 'nullable|string|max:150',
             'form_details.attachments' => 'nullable|in:none,attached',
@@ -121,13 +125,9 @@ class DocumentController extends Controller
             'form_details.location' => 'nullable|string|max:200',
 
         ]);
-        if ($data['type'] === 'DISPOSAL') {
-            // Disposal does not collect carrier/vehicle fields; retain blank legacy columns.
-            $data = [...$data, 'driver_name' => '', 'destination' => '', 'vehicle' => '', 'plate_number' => '', 'items' => null];
-        }
         if (! empty($data['items'])) {
             $data['items'] = array_values($data['items']);
-            $data['goods_description'] = implode("\n", array_map(fn ($item) => $item['name'].' - '.$item['quantity'].' '.$item['unit'], $data['items']));
+            $data['goods_description'] = implode("\n", array_map(fn ($item) => $item['name'].' - '.($item['quantity'] ?? '').' '.($item['unit'] ?? ''), $data['items']));
         }
 
         return $data;
@@ -135,7 +135,7 @@ class DocumentController extends Controller
 
     public function print(Request $request, DeliveryDocument $document)
     {
-        $data = $request->validate(['template' => ['required', Rule::in(['smb', 'delivery', 'release'])]]);
+        $data = $request->validate(['template' => ['required', Rule::in(['smb', 'delivery', 'release', 'security-slip'])]]);
         $driverSignatureDataUri = null;
         if ($document->driver_signature_path && Storage::disk('local')->exists($document->driver_signature_path)) {
             $driverSignatureDataUri = 'data:image/png;base64,'.base64_encode(Storage::disk('local')->get($document->driver_signature_path));
@@ -143,20 +143,17 @@ class DocumentController extends Controller
         $documentQrDataUri = null;
         $documentQrLabel = null;
         $documentQrValue = null;
-        if ($data['template'] !== 'release' && $document->status === 'SECURITY' && ! $document->security_code_used_at && $document->securityCode()) {
+        if ($data['template'] !== 'release' && $document->status !== 'DRAFT' && ! $document->security_code_used_at && $document->securityCode()) {
             $payload = 'MKM-SMB:'.$document->securityCode();
             $svg = (new Writer(new ImageRenderer(new RendererStyle(180, 1), new SvgImageBackEnd)))->writeString($payload);
             $documentQrDataUri = 'data:image/svg+xml;base64,'.base64_encode($svg);
             $documentQrLabel = 'PINDAI DI POS SECURITY';
             $documentQrValue = $document->securityCode();
-        } elseif ($data['template'] !== 'release' && $document->status === 'DRIVER_HANDOVER' && ! $document->driver_signed_at && $document->driverSignatureUrl()) {
-            $svg = (new Writer(new ImageRenderer(new RendererStyle(180, 1), new SvgImageBackEnd)))->writeString($document->driverSignatureUrl());
-            $documentQrDataUri = 'data:image/svg+xml;base64,'.base64_encode($svg);
-            $documentQrLabel = 'TANDA TANGAN PENGEMUDI';
-            $documentQrValue = $document->number;
         }
 
-        return response()->view('documents.print', ['document' => $document->load('creator', 'events.user'), 'template' => $data['template'], 'driverSignatureDataUri' => $driverSignatureDataUri, 'documentQrDataUri' => $documentQrDataUri, 'documentQrLabel' => $documentQrLabel, 'documentQrValue' => $documentQrValue])
+        $view = $data['template'] === 'security-slip' ? 'documents.security-slip' : 'documents.print';
+
+        return response()->view($view, ['document' => $document->load('creator', 'events.user'), 'template' => $data['template'], 'driverSignatureDataUri' => $driverSignatureDataUri, 'documentQrDataUri' => $documentQrDataUri, 'documentQrLabel' => $documentQrLabel, 'documentQrValue' => $documentQrValue])
             ->header('Cache-Control', 'no-store, private');
     }
 
@@ -167,9 +164,12 @@ class DocumentController extends Controller
         $data = $this->validated($request);
         $doc = DB::transaction(function () use ($data, $request, $submissionIntent, $workflow) {
             $doc = DeliveryDocument::create([...$data, 'created_by' => $request->user()->id, 'status' => 'DRAFT']);
-            $doc->update(['number' => ($doc->type === 'SCRAP' ? 'SMB' : 'SPB').'-'.now()->format('Ym').'-'.str_pad($doc->id, 6, '0', STR_PAD_LEFT)]);
+            $number = $doc->type === 'SCRAP'
+                ? 'SMB-'.now()->format('Ym').'-'.str_pad($doc->id, 6, '0', STR_PAD_LEFT)
+                : $this->nextDisposalNumber($doc->document_date);
+            $doc->update(['number' => $number]);
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'created', 'to_status' => 'DRAFT']);
-            if ($doc->type === 'SCRAP' && $submissionIntent === 'submit') {
+            if ($submissionIntent === 'submit') {
                 $workflow->transition($doc, $request->user(), 'submit');
             }
 
@@ -181,6 +181,18 @@ class DocumentController extends Controller
             : 'Document saved and sent for approval. Document number: '.$doc->number;
 
         return redirect()->route('documents.show', $doc)->with('success', $message);
+    }
+
+    private function nextDisposalNumber($date): string
+    {
+        $year = $date->format('Y');
+        $serial = DeliveryDocument::where('type', 'DISPOSAL')->where('number', 'like', 'MKM/JKT/%/%/'.$year)
+            ->lockForUpdate()->pluck('number')->map(function ($number) {
+                return (int) (explode('/', $number)[2] ?? 0);
+            })->max() + 1;
+        $romanMonths = [1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI', 7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII'];
+
+        return sprintf('MKM/JKT/%04d/%s/%s', $serial, $romanMonths[(int) $date->format('n')], $year);
     }
 
     public function show(DeliveryDocument $document)
@@ -205,7 +217,7 @@ class DocumentController extends Controller
             abort_if($doc->type !== $data['type'], 422, 'Document type cannot be changed after a number is assigned.');
             $doc->update($data);
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'updated', 'from_status' => 'DRAFT', 'to_status' => 'DRAFT']);
-            if ($doc->type === 'SCRAP' && $submissionIntent === 'submit') {
+            if ($submissionIntent === 'submit') {
                 $workflow->transition($doc, $request->user(), 'submit');
             }
         });

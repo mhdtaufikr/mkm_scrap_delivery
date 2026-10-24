@@ -18,7 +18,7 @@ class ApprovalConfiguration
 
     public function definition(DeliveryDocument $document): ?array
     {
-        return $document->approval_snapshot ?: $this->active($document->type);
+        return $document->approval_snapshot ?: $this->active($document->type === 'DISPOSAL' ? 'SCRAP' : $document->type);
     }
 
     public function publish(ApprovalFlow $flow, ?User $actor): void
@@ -112,7 +112,7 @@ class ApprovalConfiguration
 
     public function canAct(DeliveryDocument $doc, User $user): bool
     {
-        if ($user->access_status !== 'approved' || ! $user->is_active || ! $user->roleRecord?->is_active || $doc->type !== 'SCRAP') {
+        if ($user->access_status !== 'approved' || ! $user->is_active || ! $user->roleRecord?->is_active || ! in_array($doc->type, ['SCRAP', 'DISPOSAL'], true)) {
             return false;
         }
         if ($doc->status === 'DRAFT') {

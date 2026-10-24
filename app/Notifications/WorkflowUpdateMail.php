@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\DeliveryDocument;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -13,11 +14,11 @@ class WorkflowUpdateMail extends Notification implements ShouldQueue
 
     public int $tries = 5;
 
-    public function __construct(public int $documentId, public string $number, public string $message, public string $status, public ?string $reason = null)
+    public function __construct(public int $documentId, public string $number, public string $message, public string $status, public ?string $reason = null, public bool $requiresApproval = true)
     {
         $this->afterCommit();
-        $this->onConnection('database');
-        $this->onQueue('workflow-mail');
+        // Approval notices are operational alerts: send them immediately once the document transaction commits.
+        $this->onConnection('sync');
     }
 
     public function backoff(): array
@@ -32,11 +33,21 @@ class WorkflowUpdateMail extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)->subject('Goods release update - '.$this->number)->greeting('Hello,')->line($this->message)->line('Document: '.$this->number)->line('Status: '.$this->status);
-        if ($this->reason) {
-            $mail->line('Reason / notes: '.$this->reason);
-        }
+        $document = DeliveryDocument::with('creator')->find($this->documentId);
+        $step = $document?->statusLabel() ?? $this->status;
+        $url = route('documents.show', $this->documentId);
 
-        return $mail->action('View document', route('documents.show', $this->documentId))->line('Sign in with your MKM account to review the document. Approval actions are available only to authorized users.');
+        return (new MailMessage)
+            ->subject('['.($document?->type === 'DISPOSAL' ? 'DISPOSAL' : 'SCRAP').'] '.($this->requiresApproval ? 'Approval Request' : 'Status Notification').': '.$this->number)
+            ->view('mail.workflow-update', [
+                'document' => $document,
+                'recipient' => $notifiable,
+                'step' => $step,
+                'reason' => $this->reason,
+                'trial' => (bool) config('workflow.trial_mode'),
+                'requiresApproval' => $this->requiresApproval,
+                'url' => $url,
+            ])
+            ->action('Open document', $url);
     }
 }

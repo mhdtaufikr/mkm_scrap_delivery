@@ -66,53 +66,46 @@ class OperationalWorkflowTest extends TestCase
         $workflow = app(DocumentWorkflow::class);
         $workflow->transition($document, $owner, 'submit');
         $this->assertSame('SALES_APPROVAL', $document->fresh()->status);
+        $this->assertNotNull($document->fresh()->securityCode());
+        $this->actingAs($owner)->get(route('documents.print', [$document->fresh(), 'template' => 'smb']))->assertOk()
+            ->assertSee('PINDAI DI POS SECURITY')->assertSee($document->fresh()->securityCode());
+        $this->post(route('security.lookup'), ['security_code' => $document->fresh()->securityCode()])
+            ->assertRedirect(route('security.show', $document));
+        $this->get(route('security.show', $document))->assertOk()->assertSee('Persetujuan belum selesai');
         $workflow->transition($document, User::where('username', 'mkm02119')->firstOrFail(), 'approve');
         $this->assertSame('HRA_APPROVAL', $document->fresh()->status);
         $workflow->transition($document, User::where('username', 'mkm01436')->firstOrFail(), 'approve');
-        $this->assertSame('WAREHOUSE_PICKUP', $document->fresh()->status);
-        $workflow->transition($document, User::where('username', 'mkm01478')->firstOrFail(), 'approve', null, [], ['actual_actor_name' => 'Warehouse Officer']);
         $this->assertSame('DRIVER_HANDOVER', $document->fresh()->status);
-        $this->assertSame('Warehouse Officer', $document->fresh()->pickup_actual_name);
-        $this->assertNull($document->fresh()->securityCode());
 
         Storage::fake('local');
         $token = $document->fresh()->driverToken();
         $this->assertNotNull($token);
-        $yasin = User::where('username', 'mkm01478')->firstOrFail();
-        $this->actingAs($yasin)->getJson(route('driver-signature.status', $document))->assertOk()->assertJson(['signed' => false]);
-        $this->get(route('documents.print', [$document, 'template' => 'smb']))->assertOk()
-            ->assertSee('TANDA TANGAN PENGEMUDI')->assertSee('data:image/svg+xml;base64,', false);
-        $this->get(route('driver-signature.show', ['token' => $token]))->assertOk()->assertSee($document->number)->assertSee('Driver name');
+        $this->get(route('security.show', $document))->assertOk()
+            ->assertSee('PINDAI UNTUK TANDA TANGAN')->assertSee('data:image/svg+xml;base64,', false);
+        $this->get(route('driver-signature.show', ['token' => $token]))->assertOk()->assertSee($document->number)->assertSee('Nama lengkap pengemudi');
         $signature = "\x89PNG\r\n\x1a\n".str_repeat('signature', 20);
         $this->post(route('driver-signature.store', ['token' => $token]), [
             'driver_name' => 'Driver Actual', 'signature' => 'data:image/png;base64,'.base64_encode($signature), 'confirmed' => 1,
         ])->assertRedirect(route('driver-signature.show', ['token' => $token]));
         $this->assertNotNull($document->fresh()->driver_signed_at);
-        $this->actingAs($yasin)->getJson(route('driver-signature.status', $document))->assertOk()->assertJson(['signed' => true]);
+        $this->getJson(route('security.status', $document))->assertOk()->assertJson(['signed' => true]);
         $this->post(route('driver-signature.store', ['token' => $token]), [
             'driver_name' => 'Changed Driver', 'signature' => 'data:image/png;base64,'.base64_encode($signature), 'confirmed' => 1,
         ])->assertStatus(409);
-        $workflow->transition($document, User::where('username', 'mkm01478')->firstOrFail(), 'approve', null, [], ['actual_actor_name' => 'MKM Stamp Officer']);
         $document->refresh();
-        $this->assertSame('SECURITY', $document->status);
-        $this->assertNotNull($document->securityCode());
-        $this->assertSame('Warehouse Officer', $document->pickup_actual_name);
-        $this->assertSame('MKM Stamp Officer', $document->seal_actual_name);
-        $this->assertSame('Driver Actual', $document->receiver_name);
-
-        $this->post(route('security.lookup'), ['security_code' => $document->securityCode()])->assertRedirect(route('security.show', $document));
+        $this->get(route('security.show', $document))->assertOk()->assertSee('Beri stempel digital &amp; selesaikan', false);
         $this->post(route('security.approve', $document), [
             'inspection_version' => $document->inspectionVersion(), 'security_name' => 'Security Actual',
             'goods_checked' => 1, 'vehicle_checked' => 1, 'documents_checked' => 1,
         ])->assertRedirect(route('security.show', $document));
         $this->assertSame('COMPLETED', $document->fresh()->status);
-        $this->assertDatabaseHas('document_events', ['delivery_document_id' => $document->id, 'actual_actor_name' => 'Warehouse Officer', 'to_status' => 'DRIVER_HANDOVER']);
-        $this->assertDatabaseHas('document_events', ['delivery_document_id' => $document->id, 'actual_actor_name' => 'MKM Stamp Officer', 'to_status' => 'SECURITY']);
         $this->assertDatabaseHas('document_events', ['delivery_document_id' => $document->id, 'security_officer_name' => 'Security Actual', 'to_status' => 'COMPLETED']);
+        $this->assertSame('Security Actual', $document->fresh()->seal_actual_name);
+        $this->assertNotNull($document->fresh()->sealed_at);
         $document->refresh()->load('events.user');
         $this->assertSame('Fisty Savira', $document->printedApproval('PROC_DH')->user->name);
         $this->assertSame('Agus F', $document->printedApproval('HRD')->user->name);
-        $this->actingAs($yasin)->get(route('documents.print', [$document, 'template' => 'delivery']))->assertOk()
+        $this->actingAs($owner)->get(route('documents.print', [$document, 'template' => 'delivery']))->assertOk()
             ->assertSee('Fisty Savira')->assertSee('Agus F')->assertSee('paper-approval-check', false);
     }
 }

@@ -93,21 +93,21 @@ document.querySelectorAll('[data-security-lookup]').forEach((form) => {
                 const match = value.match(/^(?:MKM[-\s]*SMB\s*:\s*)?([A-Z0-9]{4}-?[A-Z0-9]{4}-?[A-Z0-9]{4})$/i);
                 if (match) {
                     codeInput.value = match[1].toUpperCase();
-                    status.textContent = 'QR read successfully. Opening document…';
+                    status.textContent = 'QR berhasil dibaca. Membuka dokumen…';
                     stop();
                     form.requestSubmit();
                     return;
                 }
-                status.textContent = 'This is not a valid MKM Security QR.';
+                status.textContent = 'QR ini bukan QR Security MKM yang valid.';
             }
         } catch {
-            status.textContent = 'Unable to read the QR. Hold the camera steady.';
+            status.textContent = 'QR belum terbaca. Tahan kamera agar tidak bergerak.';
         }
         window.setTimeout(() => scanFrame(detector), 300);
     };
     startButton.addEventListener('click', async () => {
         if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
-            status.textContent = 'QR scanning is not supported on this browser. Enter the unique number manually.';
+            status.textContent = 'Browser ini tidak mendukung pemindaian QR. Masukkan nomor unik secara manual.';
             scanner.hidden = false;
             scanner.querySelector('video').hidden = true;
             return;
@@ -122,12 +122,73 @@ document.querySelectorAll('[data-security-lookup]').forEach((form) => {
             scanning = true;
             scanFrame(new BarcodeDetector({ formats: ['qr_code'] }));
         } catch {
-            status.textContent = 'Camera access failed. Enter the unique number manually.';
+            status.textContent = 'Kamera tidak dapat digunakan. Masukkan nomor unik secara manual.';
             scanner.hidden = false;
         }
     });
     stopButton.addEventListener('click', stop);
     window.addEventListener('pagehide', stop, { once: true });
+});
+
+document.querySelectorAll('[data-security-dashboard]').forEach((dashboard) => {
+    const content = dashboard.querySelector('[data-security-dashboard-content]');
+    const state = dashboard.querySelector('[data-security-dashboard-state]');
+    const refreshedAt = dashboard.querySelector('[data-security-dashboard-time]');
+    let loading = false;
+    const refresh = async () => {
+        if (loading || document.hidden) return;
+        loading = true;
+        try {
+            const response = await fetch(dashboard.dataset.url, { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Dashboard refresh failed');
+            const data = await response.json();
+            const pendingOpen = content.querySelector('[data-security-pending]')?.open;
+            content.innerHTML = data.html;
+            const pendingPanel = content.querySelector('[data-security-pending]');
+            if (pendingPanel && pendingOpen) pendingPanel.open = true;
+            refreshedAt.textContent = data.refreshed_at;
+            state.textContent = 'Aktif';
+            state.classList.remove('bg-amber-400/30');
+        } catch {
+            state.textContent = 'Tidak terhubung';
+            state.classList.add('bg-amber-400/30');
+        } finally {
+            loading = false;
+        }
+    };
+    const timer = window.setInterval(refresh, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+    window.addEventListener('pagehide', () => window.clearInterval(timer), { once: true });
+});
+
+document.querySelectorAll('[data-security-qr-fullscreen]').forEach((button) => {
+    const dialog = button.parentElement.querySelector('[data-security-qr-dialog]');
+    const close = dialog?.querySelector('[data-security-qr-close]');
+    if (!dialog) return;
+    button.addEventListener('click', () => dialog.showModal());
+    close?.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+});
+
+document.querySelectorAll('[data-security-signature-watch]').forEach((panel) => {
+    let loading = false;
+    const check = async () => {
+        if (loading || document.hidden) return;
+        loading = true;
+        try {
+            const response = await fetch(panel.dataset.url, { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data.signed || data.status !== 'DRIVER_HANDOVER') window.location.reload();
+        } finally {
+            loading = false;
+        }
+    };
+    const timer = window.setInterval(check, 4000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    window.addEventListener('pagehide', () => window.clearInterval(timer), { once: true });
 });
 
 document.querySelectorAll('[data-driver-signature]').forEach((form) => {
@@ -175,7 +236,7 @@ document.querySelectorAll('[data-driver-signature]').forEach((form) => {
     form.addEventListener('submit', (event) => {
         if (!signed) {
             event.preventDefault();
-            alert('Please provide the driver signature.');
+            alert('Silakan isi tanda tangan pengemudi.');
             return;
         }
         input.value = canvas.toDataURL('image/png');
@@ -214,7 +275,8 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
             row.querySelectorAll('input').forEach((input) => {
                 input.name = input.name.replace(/items\[[^\]]+\]/, `items[${index}]`);
                 const field = input.name.match(/\[([^\]]+)\]$/)[1];
-                input.setAttribute('aria-label', `${field} for item ${index + 1}`);
+                const labels = { code: 'Kode', name: 'Nama barang', quantity: 'Jumlah', unit: 'Satuan', pallet: 'Palet', posts: 'Pos', remarks: 'Keterangan' };
+                input.setAttribute('aria-label', `${labels[field] || field} barang ${index + 1}`);
             });
             row.querySelector('[data-remove-goods]').disabled = rows.children.length <= 1;
         });
@@ -249,7 +311,7 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
             .map((line) => line.split('\t').map((cell) => cell.trim()))
             .filter((cells) => cells.some(Boolean));
         if (!matrix.length) {
-            pasteStatus.textContent = 'Paste at least one Excel row.';
+            pasteStatus.textContent = 'Tempel minimal satu baris dari Excel.';
             pasteInput.focus();
             return;
         }
@@ -273,7 +335,7 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
             return item;
         }).filter((item) => fields.some((field) => item[field]));
         if (!imported.length || imported.some((item) => !item.name || !item.quantity || !item.unit)) {
-            pasteStatus.textContent = 'Check the Description, Quantity, and Unit columns.';
+            pasteStatus.textContent = 'Periksa kolom Nama barang, Jumlah, dan Satuan.';
             return;
         }
         rows.innerHTML = '';
@@ -286,7 +348,7 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
             });
         });
         renumber();
-        pasteStatus.textContent = `${imported.length} item rows imported successfully.`;
+        pasteStatus.textContent = `${imported.length} baris barang berhasil diimpor.`;
         pastePanel.hidden = true;
     };
     pasteToggle?.addEventListener('click', () => {
@@ -298,22 +360,32 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
     renumber();
 });
 
+document.querySelectorAll('[data-goods-form]').forEach((form) => {
+    const updateDifference = () => {
+        const net = Number(form.querySelector('[data-net-weight]')?.value || 0);
+        const gross = Number(form.querySelector('[data-gross-weight]')?.value || 0);
+        form.querySelectorAll('[data-weight-difference]').forEach((output) => output.value = Math.max(0, gross - net).toFixed(2));
+    };
+    form.addEventListener('input', updateDifference);
+    updateDifference();
+});
+
 
 // Keep inactive type fields out of browser validation and submitted form data.
 document.querySelectorAll('[data-goods-form]').forEach((form) => {
     const type = form.querySelector('#type');
     const syncType = () => {
         form.querySelectorAll('[data-type-panel]').forEach((panel) => {
-            panel.hidden = panel.dataset.typePanel !== type.value;
+            panel.hidden = !panel.dataset.typePanel.split(',').includes(type.value);
             panel.disabled = panel.hidden;
         });
         form.querySelectorAll('[data-type-field]').forEach((group) => {
-            group.hidden = group.dataset.typeField !== type.value;
+            group.hidden = !group.dataset.typeField.split(',').includes(type.value);
             group.querySelectorAll('input, select, textarea').forEach((input) => input.disabled = group.hidden);
         });
         form.querySelector('[data-type-hint]').textContent = type.value === 'DISPOSAL'
-            ? 'Disposal is draft-only until its approval workflow is integrated.'
-            : 'Scrap follows the configured Procurement, HRD, handover and Security approval workflow.';
+            ? 'Disposal mengikuti alur persetujuan yang sama dengan Scrap: Procurement, HRD, serah-terima pengemudi, lalu Security.'
+            : 'Scrap mengikuti alur persetujuan Procurement, HRD, serah-terima pengemudi, lalu Security.';
     };
     type.addEventListener('change', syncType);
     syncType();

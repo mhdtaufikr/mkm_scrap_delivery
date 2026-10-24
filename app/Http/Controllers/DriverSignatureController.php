@@ -32,20 +32,22 @@ class DriverSignatureController extends Controller
         ]);
         $binary = base64_decode(substr($data['signature'], strpos($data['signature'], ',') + 1), true);
         if ($binary === false || strlen($binary) < 100 || strlen($binary) > 500000 || ! str_starts_with($binary, "\x89PNG\r\n\x1a\n")) {
-            throw ValidationException::withMessages(['signature' => 'Please provide a valid signature.']);
+            throw ValidationException::withMessages(['signature' => 'Tanda tangan tidak terbaca. Silakan ulangi tanda tangan.']);
         }
 
         $path = null;
         try {
             DB::transaction(function () use ($token, $data, $binary, &$path) {
                 $document = DeliveryDocument::where('driver_token_hash', DeliveryDocument::driverTokenHash($token))->lockForUpdate()->firstOrFail();
-                abort_unless($document->status === 'DRIVER_HANDOVER' && ! $document->driver_signed_at, 409, 'This signature link has already been used or is no longer active.');
+                abort_unless($document->status === 'DRIVER_HANDOVER' && ! $document->driver_signed_at, 409, 'Tautan tanda tangan sudah digunakan atau sudah tidak aktif.');
                 $path = 'driver-signatures/'.$document->id.'-'.bin2hex(random_bytes(8)).'.png';
                 Storage::disk('local')->put($path, $binary);
                 $document->forceFill([
                     'driver_signed_name' => trim($data['driver_name']),
                     'driver_signature_path' => $path,
                     'driver_signed_at' => now(),
+                    'handover_path' => $path,
+                    'receiver_name' => trim($data['driver_name']),
                 ])->save();
             });
         } catch (\Throwable $exception) {
@@ -62,7 +64,7 @@ class DriverSignatureController extends Controller
             $document->driver_signed_name.' submitted the driver handover signature. MKM verification is ready.'
         );
 
-        return redirect()->route('driver-signature.show', ['token' => $token])->with('success', 'Receipt and signature confirmed. Please return the phone to the MKM officer.');
+        return redirect()->route('driver-signature.show', ['token' => $token])->with('success', 'Tanda tangan berhasil disimpan. Silakan kembalikan ponsel kepada petugas MKM.');
     }
 
     public function qr(DeliveryDocument $document)
