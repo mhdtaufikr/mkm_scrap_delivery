@@ -37,14 +37,17 @@ class DocumentWorkflow
             if (in_array($action, ['delegate', 'return']) && mb_strlen(trim($notes ?? '')) < 10) {
                 throw ValidationException::withMessages(['notes' => 'Provide a reason of at least 10 characters.']);
             }
+            if ($action === 'submit' && $doc->type === 'DISPOSAL') {
+                $grossWeight = data_get($doc->form_details, 'gross_weight');
+                if (! is_numeric($grossWeight) || ! $doc->ppc_code_used_at) {
+                    throw ValidationException::withMessages(['action' => 'Disposal must be weighed through PPC Gate before approval.']);
+                }
+            }
             if ($action === 'handover' && empty($handover['handover_path'])) {
                 throw ValidationException::withMessages(['evidence' => 'Signed handover evidence is required.']);
             }
-            if ($action === 'release' && (! $doc->handover_path || ! Storage::disk('local')->exists($doc->handover_path))) {
+            if ($action === 'release' && $from !== 'DRIVER_HANDOVER' && (! $doc->handover_path || ! Storage::disk('local')->exists($doc->handover_path))) {
                 throw ValidationException::withMessages(['evidence' => 'Valid handover evidence is required before goods release.']);
-            }
-            if ($from === 'DRIVER_HANDOVER' && ! $doc->driver_signed_at) {
-                throw ValidationException::withMessages(['action' => 'The driver must submit a signature before MKM verification.']);
             }
             $doc->status = $next;
             if ($action === 'submit' && ! $doc->security_code_hash) {
@@ -57,6 +60,12 @@ class DocumentWorkflow
                     'driver_token_hash' => null, 'driver_token_encrypted' => null,
                     'seal_actual_name' => null, 'sealed_at' => null,
                 ]);
+                if ($doc->type === 'DISPOSAL') {
+                    $details = $doc->form_details ?? [];
+                    unset($details['gross_weight']);
+                    $doc->form_details = $details;
+                    $doc->issuePpcCode();
+                }
             }
             if ($action === 'handover') {
                 $doc->fill($handover);
@@ -64,14 +73,13 @@ class DocumentWorkflow
             if ($action === 'handover' && $next === 'SECURITY') {
                 $doc->issueSecurityCode();
             }
-            if ($next === 'DRIVER_HANDOVER') {
-                $doc->issueDriverToken();
-            }
             if ($from === 'DRIVER_HANDOVER' && $action === 'release') {
                 $doc->seal_actual_name = $context['security_officer_name'] ?? $context['actual_actor_name'] ?? null;
                 $doc->sealed_at = now();
-                $doc->handover_path = $doc->driver_signature_path;
-                $doc->receiver_name = $doc->driver_signed_name;
+                $doc->driver_name = trim((string) ($context['driver_name'] ?? $doc->driver_name));
+                $doc->receiver_name = $doc->driver_name;
+                $doc->driver_token_hash = null;
+                $doc->driver_token_encrypted = null;
             }
             if ($next === 'COMPLETED') {
                 $doc->completed_at = now();

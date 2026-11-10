@@ -34,102 +34,6 @@ document.querySelectorAll('[data-copy-value]').forEach((button) => {
     });
 });
 
-document.querySelectorAll('[data-driver-signature-watch]').forEach((panel) => {
-    let checking = false;
-    const check = async () => {
-        if (checking || document.hidden) return;
-        checking = true;
-        try {
-            const response = await fetch(panel.dataset.driverSignatureWatch, {
-                headers: { Accept: 'application/json' },
-                cache: 'no-store',
-                credentials: 'same-origin',
-            });
-            if (response.status === 403 || response.status === 404) {
-                window.location.reload();
-                return;
-            }
-            if (!response.ok) return;
-            const status = await response.json();
-            if (status.signed) {
-                panel.querySelector('[data-driver-signature-state]').textContent = 'Signature received';
-                panel.querySelector('[data-driver-signature-waiting]').textContent = 'Driver signature received. Loading verification…';
-                window.location.reload();
-            }
-        } finally {
-            checking = false;
-        }
-    };
-    const timer = window.setInterval(check, 4000);
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) check();
-    });
-    window.addEventListener('pagehide', () => window.clearInterval(timer), { once: true });
-});
-
-document.querySelectorAll('[data-security-lookup]').forEach((form) => {
-    const startButton = form.querySelector('[data-security-scan]');
-    const stopButton = form.querySelector('[data-security-scan-stop]');
-    const scanner = form.querySelector('[data-security-scanner]');
-    const video = scanner.querySelector('video');
-    const status = form.querySelector('[data-security-scan-status]');
-    const codeInput = form.querySelector('[name="security_code"]');
-    let stream;
-    let scanning = false;
-    const stop = () => {
-        scanning = false;
-        stream?.getTracks().forEach((track) => track.stop());
-        stream = null;
-        video.srcObject = null;
-        scanner.hidden = true;
-        startButton.hidden = false;
-    };
-    const scanFrame = async (detector) => {
-        if (!scanning) return;
-        try {
-            const codes = await detector.detect(video);
-            const value = codes[0]?.rawValue?.trim();
-            if (value) {
-                const match = value.match(/^(?:MKM[-\s]*SMB\s*:\s*)?([A-Z0-9]{4}-?[A-Z0-9]{4}-?[A-Z0-9]{4})$/i);
-                if (match) {
-                    codeInput.value = match[1].toUpperCase();
-                    status.textContent = 'QR berhasil dibaca. Membuka dokumen…';
-                    stop();
-                    form.requestSubmit();
-                    return;
-                }
-                status.textContent = 'QR ini bukan QR Security MKM yang valid.';
-            }
-        } catch {
-            status.textContent = 'QR belum terbaca. Tahan kamera agar tidak bergerak.';
-        }
-        window.setTimeout(() => scanFrame(detector), 300);
-    };
-    startButton.addEventListener('click', async () => {
-        if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
-            status.textContent = 'Browser ini tidak mendukung pemindaian QR. Masukkan nomor unik secara manual.';
-            scanner.hidden = false;
-            scanner.querySelector('video').hidden = true;
-            return;
-        }
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-            video.srcObject = stream;
-            await video.play();
-            scanner.hidden = false;
-            video.hidden = false;
-            startButton.hidden = true;
-            scanning = true;
-            scanFrame(new BarcodeDetector({ formats: ['qr_code'] }));
-        } catch {
-            status.textContent = 'Kamera tidak dapat digunakan. Masukkan nomor unik secara manual.';
-            scanner.hidden = false;
-        }
-    });
-    stopButton.addEventListener('click', stop);
-    window.addEventListener('pagehide', stop, { once: true });
-});
-
 document.querySelectorAll('[data-security-dashboard]').forEach((dashboard) => {
     const content = dashboard.querySelector('[data-security-dashboard-content]');
     const state = dashboard.querySelector('[data-security-dashboard-state]');
@@ -159,89 +63,6 @@ document.querySelectorAll('[data-security-dashboard]').forEach((dashboard) => {
     const timer = window.setInterval(refresh, 5000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
     window.addEventListener('pagehide', () => window.clearInterval(timer), { once: true });
-});
-
-document.querySelectorAll('[data-security-qr-fullscreen]').forEach((button) => {
-    const dialog = button.parentElement.querySelector('[data-security-qr-dialog]');
-    const close = dialog?.querySelector('[data-security-qr-close]');
-    if (!dialog) return;
-    button.addEventListener('click', () => dialog.showModal());
-    close?.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('click', (event) => {
-        if (event.target === dialog) dialog.close();
-    });
-});
-
-document.querySelectorAll('[data-security-signature-watch]').forEach((panel) => {
-    let loading = false;
-    const check = async () => {
-        if (loading || document.hidden) return;
-        loading = true;
-        try {
-            const response = await fetch(panel.dataset.url, { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
-            if (!response.ok) return;
-            const data = await response.json();
-            if (data.signed || data.status !== 'DRIVER_HANDOVER') window.location.reload();
-        } finally {
-            loading = false;
-        }
-    };
-    const timer = window.setInterval(check, 4000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
-    window.addEventListener('pagehide', () => window.clearInterval(timer), { once: true });
-});
-
-document.querySelectorAll('[data-driver-signature]').forEach((form) => {
-    const canvas = form.querySelector('[data-signature-canvas]');
-    const input = form.querySelector('[data-signature-input]');
-    const context = canvas.getContext('2d');
-    let drawing = false;
-    let signed = false;
-    const resize = () => {
-        const ratio = Math.max(window.devicePixelRatio || 1, 1);
-        const width = canvas.clientWidth;
-        const height = canvas.clientHeight;
-        canvas.width = width * ratio;
-        canvas.height = height * ratio;
-        context.setTransform(ratio, 0, 0, ratio, 0, 0);
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
-        context.lineWidth = 2.5;
-        context.strokeStyle = '#0f172a';
-    };
-    const point = (event) => {
-        const rect = canvas.getBoundingClientRect();
-        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    };
-    canvas.addEventListener('pointerdown', (event) => {
-        drawing = true;
-        signed = true;
-        canvas.setPointerCapture(event.pointerId);
-        const position = point(event);
-        context.beginPath();
-        context.moveTo(position.x, position.y);
-    });
-    canvas.addEventListener('pointermove', (event) => {
-        if (!drawing) return;
-        const position = point(event);
-        context.lineTo(position.x, position.y);
-        context.stroke();
-    });
-    canvas.addEventListener('pointerup', () => drawing = false);
-    form.querySelector('[data-signature-clear]').addEventListener('click', () => {
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        signed = false;
-        input.value = '';
-    });
-    form.addEventListener('submit', (event) => {
-        if (!signed) {
-            event.preventDefault();
-            alert('Silakan isi tanda tangan pengemudi.');
-            return;
-        }
-        input.value = canvas.toDataURL('image/png');
-    });
-    resize();
 });
 
 // Only show controls relevant to the selected assignment method in the approval editor.
@@ -383,9 +204,15 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
             group.hidden = !group.dataset.typeField.split(',').includes(type.value);
             group.querySelectorAll('input, select, textarea').forEach((input) => input.disabled = group.hidden);
         });
-        form.querySelector('[data-type-hint]').textContent = type.value === 'DISPOSAL'
-            ? 'Disposal mengikuti alur persetujuan yang sama dengan Scrap: Procurement, HRD, serah-terima pengemudi, lalu Security.'
-            : 'Scrap mengikuti alur persetujuan Procurement, HRD, serah-terima pengemudi, lalu Security.';
+        const disposal = type.value === 'DISPOSAL';
+        form.querySelector('[data-type-hint]').textContent = disposal
+            ? 'Simpan Disposal dengan berat bersih. PPC mengisi berat kotor melalui PPC Gate sebelum approval ke Fisty dimulai.'
+            : 'Scrap mengikuti alur persetujuan Procurement, HRD, lalu pemeriksaan Security.';
+        const submitApproval = form.querySelector('[data-submit-approval]');
+        const saveDraft = form.querySelector('[data-save-draft]');
+        submitApproval.hidden = disposal;
+        submitApproval.disabled = disposal;
+        saveDraft.textContent = disposal ? 'Simpan Disposal' : 'Simpan sebagai draf';
     };
     type.addEventListener('change', syncType);
     syncType();

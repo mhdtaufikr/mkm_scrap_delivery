@@ -209,18 +209,20 @@ class ScrapApplicationTest extends TestCase
         $this->get(route('documents.event-evidence', [$other, $event->id]))->assertNotFound();
     }
 
-    public function test_disposal_uses_the_same_approval_flow_as_scrap(): void
+    public function test_disposal_waits_for_ppc_gate_before_approval_flow(): void
     {
         $ppc = $this->account();
         $this->actingAs($ppc)->post('/documents', [
             'type' => 'DISPOSAL', 'document_date' => '2026-10-16', 'release_date' => '2026-10-16', 'release_time' => '09:00',
             'driver_name' => 'Driver Disposal', 'company' => 'Buyer', 'destination' => 'Jakarta', 'vehicle' => 'Truck', 'plate_number' => 'B 1234 DP', 'workflow_reference' => 'WF-SETTLED-001',
-            'items' => [['name' => 'Disposal material', 'quantity' => 1, 'unit' => 'kg']], 'form_details' => ['net_weight' => 10, 'gross_weight' => 12], 'submission_intent' => 'submit',
+            'items' => [['name' => 'Disposal material', 'quantity' => 1, 'unit' => 'kg']], 'form_details' => ['net_weight' => 10], 'submission_intent' => 'submit',
         ])->assertSessionHasNoErrors();
         $this->assertDatabaseHas('delivery_documents', ['type' => 'DISPOSAL', 'number' => 'MKM/JKT/0001/X/2026']);
         $disposal = DeliveryDocument::latest('id')->firstOrFail();
-        $this->assertSame('PROC_STAFF', $disposal->status);
-        $this->assertNotNull($disposal->securityCode());
+        $this->assertSame('DRAFT', $disposal->status);
+        $this->assertNotNull($disposal->ppcCode());
+        $this->assertNull($disposal->securityCode());
+        $this->assertArrayNotHasKey('gross_weight', $disposal->form_details);
     }
 
     public function test_filters_counts_queue_and_notifications_follow_the_current_user(): void

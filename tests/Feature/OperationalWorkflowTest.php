@@ -8,7 +8,6 @@ use App\Services\DocumentWorkflow;
 use Database\Seeders\OperationalSetupSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class OperationalWorkflowTest extends TestCase
@@ -67,8 +66,9 @@ class OperationalWorkflowTest extends TestCase
         $workflow->transition($document, $owner, 'submit');
         $this->assertSame('SALES_APPROVAL', $document->fresh()->status);
         $this->assertNotNull($document->fresh()->securityCode());
+        $this->assertSame(6, strlen($document->fresh()->securityCode()));
         $this->actingAs($owner)->get(route('documents.print', [$document->fresh(), 'template' => 'smb']))->assertOk()
-            ->assertSee('PINDAI DI POS SECURITY')->assertSee($document->fresh()->securityCode());
+            ->assertDontSee('PINDAI DI POS SECURITY')->assertDontSee($document->fresh()->securityCode());
         $this->post(route('security.lookup'), ['security_code' => $document->fresh()->securityCode()])
             ->assertRedirect(route('security.show', $document));
         $this->get(route('security.show', $document))->assertOk()->assertSee('Persetujuan belum selesai');
@@ -77,35 +77,39 @@ class OperationalWorkflowTest extends TestCase
         $workflow->transition($document, User::where('username', 'mkm01436')->firstOrFail(), 'approve');
         $this->assertSame('DRIVER_HANDOVER', $document->fresh()->status);
 
-        Storage::fake('local');
-        $token = $document->fresh()->driverToken();
-        $this->assertNotNull($token);
         $this->get(route('security.show', $document))->assertOk()
-            ->assertSee('PINDAI UNTUK TANDA TANGAN')->assertSee('data:image/svg+xml;base64,', false);
-        $this->get(route('driver-signature.show', ['token' => $token]))->assertOk()->assertSee($document->number)->assertSee('Nama lengkap pengemudi');
-        $signature = "\x89PNG\r\n\x1a\n".str_repeat('signature', 20);
-        $this->post(route('driver-signature.store', ['token' => $token]), [
-            'driver_name' => 'Driver Actual', 'signature' => 'data:image/png;base64,'.base64_encode($signature), 'confirmed' => 1,
-        ])->assertRedirect(route('driver-signature.show', ['token' => $token]));
-        $this->assertNotNull($document->fresh()->driver_signed_at);
-        $this->getJson(route('security.status', $document))->assertOk()->assertJson(['signed' => true]);
-        $this->post(route('driver-signature.store', ['token' => $token]), [
-            'driver_name' => 'Changed Driver', 'signature' => 'data:image/png;base64,'.base64_encode($signature), 'confirmed' => 1,
-        ])->assertStatus(409);
+            ->assertSee('Nama lengkap pengemudi')->assertSee('Diisi oleh petugas Security')
+            ->assertDontSee('Tanda tangan pengemudi')->assertDontSee('data:image/svg+xml;base64,', false);
+        $this->get('/driver-signature/obsolete-token')->assertNotFound();
         $document->refresh();
         $this->get(route('security.show', $document))->assertOk()->assertSee('Beri stempel digital &amp; selesaikan', false);
         $this->post(route('security.approve', $document), [
-            'inspection_version' => $document->inspectionVersion(), 'security_name' => 'Security Actual',
+            'inspection_version' => $document->inspectionVersion(), 'security_name' => 'Security Actual', 'driver_name' => 'Driver Actual',
             'goods_checked' => 1, 'vehicle_checked' => 1, 'documents_checked' => 1,
         ])->assertRedirect(route('security.show', $document));
         $this->assertSame('COMPLETED', $document->fresh()->status);
         $this->assertDatabaseHas('document_events', ['delivery_document_id' => $document->id, 'security_officer_name' => 'Security Actual', 'to_status' => 'COMPLETED']);
         $this->assertSame('Security Actual', $document->fresh()->seal_actual_name);
+        $this->assertSame('Driver Actual', $document->fresh()->driver_name);
+        $this->assertSame('Driver Actual', $document->fresh()->receiver_name);
+        $this->assertNull($document->fresh()->driver_signed_at);
         $this->assertNotNull($document->fresh()->sealed_at);
         $document->refresh()->load('events.user');
         $this->assertSame('Fisty Savira', $document->printedApproval('PROC_DH')->user->name);
         $this->assertSame('Agus F', $document->printedApproval('HRD')->user->name);
-        $this->actingAs($owner)->get(route('documents.print', [$document, 'template' => 'delivery']))->assertOk()
-            ->assertSee('Fisty Savira')->assertSee('Agus F')->assertSee('paper-approval-check', false);
+        $deliveryPrint = $this->actingAs($owner)->get(route('documents.print', [$document, 'template' => 'delivery']));
+        $deliveryPrint->assertOk()->assertSee('Fisty Savira')->assertSee('Agus F')
+            ->assertSee('Driver Actual')->assertSee('paper-approval-check', false);
+        $this->assertGreaterThanOrEqual(5, substr_count($deliveryPrint->getContent(), 'paper-approval-check'));
+
+        $smbPrint = $this->get(route('documents.print', [$document, 'template' => 'smb']));
+        $smbPrint->assertOk()->assertSee('Driver Actual')->assertSee($owner->name);
+        $this->assertGreaterThanOrEqual(2, substr_count($smbPrint->getContent(), 'paper-approval-check'));
+
+        $releasePrint = $this->get(route('documents.print', [$document, 'template' => 'release']));
+        $releasePrint->assertOk()
+            ->assertSee('Jakarta')->assertSee($document->number)->assertSee('Fisty Savira')
+            ->assertSee($owner->name)->assertSee('Buyer')->assertSee('Driver Actual')
+            ->assertDontSee('................................');
     }
 }

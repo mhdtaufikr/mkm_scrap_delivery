@@ -15,7 +15,7 @@ class DeliveryDocument extends Model
 
     protected function casts(): array
     {
-        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean', 'security_code_issued_at' => 'datetime', 'security_code_used_at' => 'datetime', 'driver_signed_at' => 'datetime', 'sealed_at' => 'datetime'];
+        return ['items' => 'array', 'form_details' => 'array', 'document_date' => 'date', 'departure_at' => 'datetime', 'completed_at' => 'datetime', 'approval_snapshot' => 'array', 'pending_user_ids' => 'array', 'pending_owner_only' => 'boolean', 'security_code_issued_at' => 'datetime', 'security_code_used_at' => 'datetime', 'ppc_code_issued_at' => 'datetime', 'ppc_code_used_at' => 'datetime', 'driver_signed_at' => 'datetime', 'sealed_at' => 'datetime'];
     }
 
     public const STATUSES = [
@@ -23,7 +23,7 @@ class DeliveryDocument extends Model
         'PROC_DH' => 'Procurement DH Approval', 'HRD' => 'HRD Approval',
         'HANDOVER' => 'Signed Handover', 'SECURITY' => 'Security Inspection',
         'SALES_APPROVAL' => 'Procurement & Sales Approval', 'HRA_APPROVAL' => 'HRA Approval',
-        'WAREHOUSE_PICKUP' => 'Warehouse Pickup', 'DRIVER_HANDOVER' => 'Driver Handover & Signature',
+        'WAREHOUSE_PICKUP' => 'Warehouse Pickup', 'DRIVER_HANDOVER' => 'Security Inspection',
         'COMPLETED' => 'Completed',
     ];
 
@@ -42,11 +42,11 @@ class DeliveryDocument extends Model
     public function issueSecurityCode(): string
     {
         do {
-            $raw = strtoupper(Str::random(12));
+            $raw = strtoupper(Str::random(6));
             $hash = self::securityCodeHash($raw);
         } while (self::where('security_code_hash', $hash)->exists());
 
-        $code = implode('-', str_split($raw, 4));
+        $code = $raw;
         $this->forceFill([
             'security_code_hash' => $hash,
             'security_code_encrypted' => Crypt::encryptString($code),
@@ -62,41 +62,34 @@ class DeliveryDocument extends Model
         return $this->security_code_encrypted ? Crypt::decryptString($this->security_code_encrypted) : null;
     }
 
-    public static function driverTokenHash(string $token): string
+    public static function ppcCodeHash(string $code): string
     {
-        return hash_hmac('sha256', $token, (string) config('app.key'));
+        $normalized = strtoupper(preg_replace('/[^A-Z0-9]/i', '', $code));
+
+        return hash_hmac('sha256', $normalized, (string) config('app.key'));
     }
 
-    public function issueDriverToken(): string
+    public function issuePpcCode(): string
     {
         do {
-            $token = Str::random(64);
-            $hash = self::driverTokenHash($token);
-        } while (self::where('driver_token_hash', $hash)->exists());
+            $raw = strtoupper(Str::random(6));
+            $hash = self::ppcCodeHash($raw);
+        } while (self::where('ppc_code_hash', $hash)->exists());
 
+        $code = $raw;
         $this->forceFill([
-            'driver_token_hash' => $hash,
-            'driver_token_encrypted' => Crypt::encryptString($token),
-            'driver_signed_name' => null,
-            'driver_signature_path' => null,
-            'driver_signed_at' => null,
-            'seal_actual_name' => null,
-            'sealed_at' => null,
+            'ppc_code_hash' => $hash,
+            'ppc_code_encrypted' => Crypt::encryptString($code),
+            'ppc_code_issued_at' => now(),
+            'ppc_code_used_at' => null,
         ])->save();
 
-        return $token;
+        return $code;
     }
 
-    public function driverToken(): ?string
+    public function ppcCode(): ?string
     {
-        return $this->driver_token_encrypted ? Crypt::decryptString($this->driver_token_encrypted) : null;
-    }
-
-    public function driverSignatureUrl(): ?string
-    {
-        $token = $this->driverToken();
-
-        return $token ? route('driver-signature.show', ['token' => $token]) : null;
+        return $this->ppc_code_encrypted ? Crypt::decryptString($this->ppc_code_encrypted) : null;
     }
 
     public function creator(): BelongsTo
@@ -159,6 +152,10 @@ class DeliveryDocument extends Model
 
     public function labelFor(string $status): string
     {
+        if ($status === 'DRIVER_HANDOVER') {
+            return 'Pemeriksaan Security';
+        }
+
         return __($this->approval_snapshot['steps'][$status]['name'] ?? self::STATUSES[$status] ?? ApprovalStep::where('code', $status)->latest('id')->value('name') ?? $status);
     }
 

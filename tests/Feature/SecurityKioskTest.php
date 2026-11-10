@@ -29,26 +29,22 @@ class SecurityKioskTest extends TestCase
         $this->gate = User::factory()->create(['name' => 'Security Gate System', 'username' => 'security.gate', 'email' => 'security-gate@system.local', 'role' => 'SECURITY', 'local_login_enabled' => false]);
     }
 
-    private function document(string $status = 'DRIVER_HANDOVER', bool $signed = true): array
+    private function document(string $status = 'DRIVER_HANDOVER'): array
     {
         static $sequence = 0;
         $sequence++;
-        $path = 'handover/test-'.$sequence.'.pdf';
-        Storage::disk('local')->put($path, 'signed evidence');
         $snapshot = app(ApprovalConfiguration::class)->active('SCRAP');
         $snapshot['steps']['DRIVER_HANDOVER'] = [
-            'code' => 'DRIVER_HANDOVER', 'name' => 'Tanda Tangan Pengemudi & Pemeriksaan Security',
+            'code' => 'DRIVER_HANDOVER', 'name' => 'Pemeriksaan Security',
             'actor_mode' => 'role', 'role_code' => 'SECURITY', 'user_ids' => [], 'action' => 'release',
             'action_label' => 'Selesaikan pemeriksaan', 'next_code' => 'COMPLETED', 'delegate_to' => null,
             'notice_roles' => [], 'delegate_notice_roles' => [], 'allow_return' => false,
         ];
         $document = DeliveryDocument::create([
             'number' => 'SMB-SECURITY-'.$sequence, 'type' => 'SCRAP', 'status' => $status,
-            'created_by' => $this->owner->id, 'document_date' => today(), 'driver_name' => 'Driver Test',
+            'created_by' => $this->owner->id, 'document_date' => today(), 'driver_name' => '',
             'company' => 'Buyer', 'destination' => 'Jakarta', 'vehicle' => 'Truck', 'plate_number' => 'B 123',
-            'goods_description' => 'Scrap', 'handover_path' => $signed ? $path : null, 'receiver_name' => $signed ? 'Driver Test' : null,
-            'driver_signed_name' => $signed ? 'Driver Test' : null, 'driver_signature_path' => $signed ? $path : null,
-            'driver_signed_at' => $signed ? now() : null, 'approval_snapshot' => $snapshot,
+            'goods_description' => 'Scrap', 'approval_snapshot' => $snapshot,
         ]);
         $code = $document->issueSecurityCode();
 
@@ -57,18 +53,20 @@ class SecurityKioskTest extends TestCase
 
     private function payload(DeliveryDocument $document): array
     {
-        return ['inspection_version' => $document->inspectionVersion(), 'security_name' => 'Budi Security', 'goods_checked' => 1, 'vehicle_checked' => 1, 'documents_checked' => 1];
+        return ['inspection_version' => $document->inspectionVersion(), 'security_name' => 'Budi Security', 'driver_name' => 'Joko Driver', 'goods_checked' => 1, 'vehicle_checked' => 1, 'documents_checked' => 1];
     }
 
-    public function test_gate_live_dashboard_separates_pending_approval_from_drivers_ready_to_call(): void
+    public function test_gate_live_dashboard_separates_pending_approval_from_security_queue(): void
     {
-        [$ready] = $this->document('DRIVER_HANDOVER', false);
+        [$ready] = $this->document();
         [$gate] = $this->document();
         [$pending] = $this->document('HRA_APPROVAL');
         [$completed] = $this->document('COMPLETED');
 
         $this->get(route('security.index'))->assertOk()
-            ->assertSee('Lihat proses approval')->assertSee('Pengemudi siap dipanggil')->assertSee('Pindai QR Security')->assertSee('data-security-scan', false)
+            ->assertSee('Lihat proses approval')->assertSee('Siap diperiksa Security')->assertSee('Kode unik')
+            ->assertDontSee('Pindai QR Security')->assertDontSee('data-security-scan', false)
+            ->assertDontSee('Menunggu TTD')
             ->assertSee($ready->number)->assertSee($gate->number)
             ->assertSee($pending->number)->assertDontSee($completed->number);
         $dashboard = $this->getJson(route('security.dashboard'))->assertOk()
@@ -87,25 +85,25 @@ class SecurityKioskTest extends TestCase
     public function test_exact_unique_number_opens_only_its_document(): void
     {
         [$document, $code] = $this->document();
-        $this->post(route('security.lookup'), ['security_code' => 'WRONG-CODE-0000'])->assertSessionHasErrors('security_code');
-        $this->post(route('security.lookup'), ['security_code' => strtolower(str_replace('-', '', $code))])->assertRedirect(route('security.show', $document));
-        $this->get(route('security.show', $document))->assertOk()->assertSee($document->number)->assertSee('B 123')->assertSee('Nama petugas yang berjaga');
-        $this->get(route('security.evidence', $document))->assertOk();
+        $this->assertSame(6, strlen($code));
+        $this->post(route('security.lookup'), ['security_code' => 'WRONG1'])->assertSessionHasErrors('security_code');
+        $this->post(route('security.lookup'), ['security_code' => strtolower($code)])->assertRedirect(route('security.show', $document));
+        $this->get(route('security.show', $document))->assertOk()->assertSee($document->number)->assertSee('B 123')->assertSee('Nama petugas yang berjaga')->assertSee('Nama lengkap pengemudi');
+        $this->get(route('security.evidence', $document))->assertNotFound();
         $this->assertGuest();
     }
 
-    public function test_security_qr_is_printed_only_while_code_is_active(): void
+    public function test_official_prints_do_not_embed_gate_code_or_qr(): void
     {
         [$document, $code] = $this->document();
         $this->actingAs($this->owner);
         foreach (['smb', 'delivery'] as $template) {
             $this->get(route('documents.print', [$document, 'template' => $template]))->assertOk()
-                ->assertSee('PINDAI DI POS SECURITY')->assertSee($code)->assertSee('data:image/svg+xml;base64,', false);
+                ->assertDontSee('PINDAI DI POS SECURITY')->assertDontSee($code)->assertDontSee('data:image/svg+xml;base64,', false);
         }
-        $this->get(route('documents.print', [$document, 'template' => 'release']))->assertOk()->assertDontSee('PINDAI DI POS SECURITY');
-        $this->post(route('security.lookup'), ['security_code' => 'MKM-SMB:'.$code])->assertRedirect(route('security.show', $document));
+        $this->get(route('documents.print', [$document, 'template' => 'security-slip']))->assertSessionHasErrors('template');
+        $this->post(route('security.lookup'), ['security_code' => $code])->assertRedirect(route('security.show', $document));
         $this->post(route('security.approve', $document), $this->payload($document))->assertRedirect(route('security.show', $document));
-        $this->get(route('documents.print', [$document->fresh(), 'template' => 'smb']))->assertOk()->assertDontSee('PINDAI DI POS SECURITY');
     }
 
     public function test_physical_checks_and_actual_security_name_are_required(): void
@@ -118,6 +116,9 @@ class SecurityKioskTest extends TestCase
         $payload = $this->payload($document);
         $payload['security_name'] = '';
         $this->post(route('security.approve', $document), $payload)->assertSessionHasErrors('security_name');
+        $payload = $this->payload($document);
+        $payload['driver_name'] = '';
+        $this->post(route('security.approve', $document), $payload)->assertSessionHasErrors('driver_name');
         $this->assertSame('DRIVER_HANDOVER', $document->fresh()->status);
     }
 
@@ -129,12 +130,14 @@ class SecurityKioskTest extends TestCase
         $this->assertSame('COMPLETED', $document->fresh()->status);
         $this->assertNotNull($document->fresh()->security_code_used_at);
         $this->assertDatabaseHas('document_events', ['delivery_document_id' => $document->id, 'user_id' => $this->gate->id, 'action' => 'release', 'security_officer_name' => 'Budi Security', 'actual_actor_name' => 'Budi Security']);
-        $this->get(route('security.show', $document))->assertOk()->assertSee('Pengeluaran barang sudah selesai')->assertSee('Budi Security');
+        $this->assertSame('Joko Driver', $document->fresh()->driver_name);
+        $this->assertNull($document->fresh()->driver_signed_at);
+        $this->get(route('security.show', $document))->assertOk()->assertSee('Pengeluaran barang sudah selesai')->assertSee('Budi Security')->assertSee('Joko Driver');
         $this->post(route('security.approve', $document), $this->payload($document->fresh()))->assertStatus(409);
         $this->withSession([])->post(route('security.lookup'), ['security_code' => $code])->assertSessionHasErrors('security_code');
     }
 
-    public function test_stale_document_wrong_status_and_missing_evidence_cannot_release(): void
+    public function test_stale_document_and_wrong_status_cannot_release_but_signature_evidence_is_not_required(): void
     {
         [$document, $code] = $this->document();
         $this->post(route('security.lookup'), ['security_code' => $code]);
@@ -142,10 +145,10 @@ class SecurityKioskTest extends TestCase
         $document->events()->create(['user_id' => $this->owner->id, 'actor_role' => 'PPC', 'action' => 'updated', 'to_status' => 'DRIVER_HANDOVER']);
         $this->post(route('security.approve', $document), $stale)->assertStatus(409);
 
-        [$missing, $missingCode] = $this->document();
-        Storage::disk('local')->delete($missing->handover_path);
-        $this->post(route('security.lookup'), ['security_code' => $missingCode]);
-        $this->post(route('security.approve', $missing), $this->payload($missing->fresh()))->assertSessionHasErrors('evidence');
+        [$unsigned, $unsignedCode] = $this->document();
+        $this->post(route('security.lookup'), ['security_code' => $unsignedCode]);
+        $this->post(route('security.approve', $unsigned), $this->payload($unsigned->fresh()))->assertRedirect(route('security.show', $unsigned));
+        $this->assertSame('COMPLETED', $unsigned->fresh()->status);
 
         [$upstream, $upstreamCode] = $this->document('HRD');
         $this->post(route('security.lookup'), ['security_code' => $upstreamCode])->assertSessionHasErrors('security_code');

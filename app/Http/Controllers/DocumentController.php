@@ -5,10 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\DeliveryDocument;
 use App\Services\ApprovalConfiguration;
 use App\Services\DocumentWorkflow;
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -87,7 +83,7 @@ class DocumentController extends Controller
         $data = $request->validate([
             'type' => ['required', Rule::in($document ? [$document->type] : ['SCRAP', 'DISPOSAL'])], 'document_date' => 'required|date',
             'departure_at' => 'nullable|date|after_or_equal:document_date',
-            'driver_name' => 'required|string|max:150', 'company' => 'required|string|max:200',
+            'company' => 'required|string|max:200',
             'destination' => 'required|string|max:255', 'vehicle' => 'required|string|max:100',
             'plate_number' => 'required|string|max:30', 'goods_description' => 'nullable|required_without:items|string|max:5000',
             'workflow_reference' => 'nullable|string|max:100', 'notes' => 'nullable|string|max:3000',
@@ -102,12 +98,8 @@ class DocumentController extends Controller
             'items.*.remarks' => 'nullable|string|max:255',
             'items.*.net_weight' => 'nullable|numeric|min:0|max:999999999',
             'items.*.gross_weight' => 'nullable|numeric|gte:items.*.net_weight|max:999999999',
-            'form_details' => 'nullable|array:delivery_number,identity_number,lot,net_weight,gross_weight,department,loader_name,attachments,letter_city,letter_number,recipient_hr,recipient_ppc,sales_reference,sales_reference_date,origin_department,disposal_date,sale_date,sale_time,buyer_contact,location',
-            'form_details.delivery_number' => 'nullable|string|max:100',
-            'form_details.identity_number' => 'nullable|string|max:60',
-            'form_details.lot' => 'nullable|string|max:60',
+            'form_details' => 'nullable|array:net_weight,department,loader_name,attachments,letter_city,letter_number,recipient_hr,recipient_ppc,sales_reference,sales_reference_date,origin_department,disposal_date,sale_date,sale_time,buyer_contact,location',
             'form_details.net_weight' => 'nullable|required_if:type,DISPOSAL|numeric|min:0|max:999999999',
-            'form_details.gross_weight' => 'nullable|required_if:type,DISPOSAL|numeric|gte:form_details.net_weight|max:999999999',
             'form_details.department' => 'nullable|string|max:150',
             'form_details.loader_name' => 'nullable|string|max:150',
             'form_details.attachments' => 'nullable|in:none,attached',
@@ -129,31 +121,16 @@ class DocumentController extends Controller
             $data['items'] = array_values($data['items']);
             $data['goods_description'] = implode("\n", array_map(fn ($item) => $item['name'].' - '.($item['quantity'] ?? '').' '.($item['unit'] ?? ''), $data['items']));
         }
+        $data['driver_name'] = $document?->driver_name ?? '';
 
         return $data;
     }
 
     public function print(Request $request, DeliveryDocument $document)
     {
-        $data = $request->validate(['template' => ['required', Rule::in(['smb', 'delivery', 'release', 'security-slip'])]]);
-        $driverSignatureDataUri = null;
-        if ($document->driver_signature_path && Storage::disk('local')->exists($document->driver_signature_path)) {
-            $driverSignatureDataUri = 'data:image/png;base64,'.base64_encode(Storage::disk('local')->get($document->driver_signature_path));
-        }
-        $documentQrDataUri = null;
-        $documentQrLabel = null;
-        $documentQrValue = null;
-        if ($data['template'] !== 'release' && $document->status !== 'DRAFT' && ! $document->security_code_used_at && $document->securityCode()) {
-            $payload = 'MKM-SMB:'.$document->securityCode();
-            $svg = (new Writer(new ImageRenderer(new RendererStyle(180, 1), new SvgImageBackEnd)))->writeString($payload);
-            $documentQrDataUri = 'data:image/svg+xml;base64,'.base64_encode($svg);
-            $documentQrLabel = 'PINDAI DI POS SECURITY';
-            $documentQrValue = $document->securityCode();
-        }
+        $data = $request->validate(['template' => ['required', Rule::in(['smb', 'delivery', 'release'])]]);
 
-        $view = $data['template'] === 'security-slip' ? 'documents.security-slip' : 'documents.print';
-
-        return response()->view($view, ['document' => $document->load('creator', 'events.user'), 'template' => $data['template'], 'driverSignatureDataUri' => $driverSignatureDataUri, 'documentQrDataUri' => $documentQrDataUri, 'documentQrLabel' => $documentQrLabel, 'documentQrValue' => $documentQrValue])
+        return response()->view('documents.print', ['document' => $document->load('creator', 'events.user'), 'template' => $data['template']])
             ->header('Cache-Control', 'no-store, private');
     }
 
@@ -168,8 +145,11 @@ class DocumentController extends Controller
                 ? 'SMB-'.now()->format('Ym').'-'.str_pad($doc->id, 6, '0', STR_PAD_LEFT)
                 : $this->nextDisposalNumber($doc->document_date);
             $doc->update(['number' => $number]);
+            if ($doc->type === 'DISPOSAL') {
+                $doc->issuePpcCode();
+            }
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'created', 'to_status' => 'DRAFT']);
-            if ($submissionIntent === 'submit') {
+            if ($submissionIntent === 'submit' && $doc->type === 'SCRAP') {
                 $workflow->transition($doc, $request->user(), 'submit');
             }
 
@@ -177,7 +157,7 @@ class DocumentController extends Controller
         });
 
         $message = $doc->fresh()->status === 'DRAFT'
-            ? 'Draft saved. Document number: '.$doc->number
+            ? ($doc->type === 'DISPOSAL' ? 'Disposal saved. Continue gross weighing through PPC Gate. Document number: '.$doc->number : 'Draft saved. Document number: '.$doc->number)
             : 'Document saved and sent for approval. Document number: '.$doc->number;
 
         return redirect()->route('documents.show', $doc)->with('success', $message);
@@ -216,8 +196,11 @@ class DocumentController extends Controller
             abort_unless($doc->editableBy($request->user()), 403);
             abort_if($doc->type !== $data['type'], 422, 'Document type cannot be changed after a number is assigned.');
             $doc->update($data);
+            if ($doc->type === 'DISPOSAL' && (! $doc->ppc_code_hash || $doc->ppc_code_used_at)) {
+                $doc->issuePpcCode();
+            }
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'updated', 'from_status' => 'DRAFT', 'to_status' => 'DRAFT']);
-            if ($submissionIntent === 'submit') {
+            if ($submissionIntent === 'submit' && $doc->type === 'SCRAP') {
                 $workflow->transition($doc, $request->user(), 'submit');
             }
         });
@@ -236,6 +219,7 @@ class DocumentController extends Controller
             'receiver_name' => 'required_if:action,handover|nullable|string|max:150',
             'evidence' => 'required_if:action,handover|nullable|file|mimes:pdf,png,jpg,jpeg|max:5120',
             'actual_actor_name' => [Rule::requiredIf(in_array($document->status, ['WAREHOUSE_PICKUP', 'DRIVER_HANDOVER'], true)), 'nullable', 'string', 'min:3', 'max:150'],
+            'driver_name' => [Rule::requiredIf($document->status === 'DRIVER_HANDOVER' && $request->input('action') === 'release'), 'nullable', 'string', 'min:3', 'max:150'],
         ]);
         $path = null;
         try {
@@ -244,7 +228,7 @@ class DocumentController extends Controller
                 $path = $request->file('evidence')->store('handover', 'local');
                 $handover = ['handover_path' => $path, 'receiver_name' => $data['receiver_name']];
             }
-            $workflow->transition($document, $request->user(), $data['action'], $data['notes'] ?? null, $handover, ['actual_actor_name' => $data['actual_actor_name'] ?? null]);
+            $workflow->transition($document, $request->user(), $data['action'], $data['notes'] ?? null, $handover, ['actual_actor_name' => $data['actual_actor_name'] ?? null, 'driver_name' => $data['driver_name'] ?? null]);
         } catch (\Throwable $e) {
             if ($path) {
                 Storage::disk('local')->delete($path);

@@ -61,10 +61,6 @@
 .paper-brand { display: flex; align-items: center; gap: 22px; text-align: center; padding-bottom: 10px; border-bottom: 2px solid #111; }
 .paper-brand img { width: 90px; height: 48px; object-fit: contain; flex-shrink: 0; }
 .paper-brand > div { flex: 1; }
-.paper-brand .paper-security-qr { flex: 0 0 72px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.paper-security-qr img { width: 58px; height: 58px; filter: none !important; }
-.paper-security-qr small { font-size: 6px; font-weight: 700; }
-.paper-security-qr strong { font-family: monospace; font-size: 6px; white-space: nowrap; }
 .paper-brand strong { font-size: 12px; }
 .paper-brand h1, .paper-brand h2 { font-size: 23px; font-weight: 700; margin: 4px 0; line-height: 1.2; }
 .paper-brand p { font-size: 11px; }
@@ -114,14 +110,11 @@
 .paper-approval-check { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border: 1.5px solid #087f5b; border-radius: 50%; color: #087f5b; font-size: 13px; font-weight: 700; line-height: 1; margin-bottom: 3px; }
 .paper-driver-signature { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; font-size: 9px; }
 .paper-smb-bottom .paper-approval-name { min-height: 58px; justify-content: flex-end; }
-.paper-driver-signature img, .paper-signature-image { display: block; width: 105px; height: 38px; object-fit: contain; mix-blend-mode: multiply; }
-.paper-driver-signature small { font-size: 7px; }
 .paper-document-footer { break-inside: avoid; page-break-inside: avoid; }
 .paper-signatures { margin-top: 6px; }
 .paper-signatures th { height: 34px; padding: 4px 3px; vertical-align: middle; line-height: 1.25; }
 .paper-signatures td { height: 64px; text-align: center; vertical-align: bottom; padding: 2px 3px; }
 .paper-signatures .paper-approval-name { min-height: 43px; padding: 2px 0; overflow: visible; }
-.paper-signatures .paper-signature-image { width: 90px; height: 32px; }
 .paper-sign-line { margin-top: 2px; border-bottom: 1px dotted #777; min-height: 16px; line-height: 15px; }
 .paper-copy-colors { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 8px; }
 .paper-audit-foot { margin-top: 12px; padding-top: 5px; border-top: 1px solid #aaa; font-size: 8px; color: #555; }
