@@ -44,7 +44,7 @@ class SecurityKioskTest extends TestCase
             'number' => 'SMB-SECURITY-'.$sequence, 'type' => 'SCRAP', 'status' => $status,
             'created_by' => $this->owner->id, 'document_date' => today(), 'driver_name' => '',
             'company' => 'Buyer', 'destination' => 'Jakarta', 'vehicle' => 'Truck', 'plate_number' => 'B 123',
-            'goods_description' => 'Scrap', 'approval_snapshot' => $snapshot,
+            'goods_description' => 'Scrap', 'form_details' => ['loader_name' => 'Joko Info Driver'], 'approval_snapshot' => $snapshot,
         ]);
         $code = $document->issueSecurityCode();
 
@@ -88,7 +88,7 @@ class SecurityKioskTest extends TestCase
         $this->assertSame(6, strlen($code));
         $this->post(route('security.lookup'), ['security_code' => 'WRONG1'])->assertSessionHasErrors('security_code');
         $this->post(route('security.lookup'), ['security_code' => strtolower($code)])->assertRedirect(route('security.show', $document));
-        $this->get(route('security.show', $document))->assertOk()->assertSee($document->number)->assertSee('B 123')->assertSee('Nama petugas yang berjaga')->assertSee('Nama lengkap pengemudi');
+        $this->get(route('security.show', $document))->assertOk()->assertSee($document->number)->assertSee('B 123')->assertSee('Informasi driver')->assertSee('Joko Info Driver')->assertSee('Nama petugas yang berjaga')->assertSee('Nama driver');
         $this->get(route('security.evidence', $document))->assertNotFound();
         $this->assertGuest();
     }

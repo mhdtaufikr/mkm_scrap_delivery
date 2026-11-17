@@ -74,25 +74,25 @@ class PpcGateController extends Controller
             $details = $doc->form_details ?? [];
             $netWeight = $details['net_weight'] ?? null;
             if (! is_numeric($netWeight)) {
-                throw ValidationException::withMessages(['gross_weight' => 'Berat bersih dokumen belum tersedia.']);
+                throw ValidationException::withMessages(['gross_weight' => 'Timbang 1 (Truck Kosong) belum tersedia.']);
             }
             if ((float) $data['gross_weight'] < (float) $netWeight) {
-                throw ValidationException::withMessages(['gross_weight' => 'Berat kotor harus sama dengan atau lebih besar dari berat bersih.']);
+                throw ValidationException::withMessages(['gross_weight' => 'Timbang 2 (Truck Isi) harus sama dengan atau lebih besar dari Timbang 1.']);
             }
 
             $definition = app(ApprovalConfiguration::class)->definition($doc);
             $startCode = data_get($definition, 'start_code');
             $firstApprovers = data_get($definition, 'steps.'.$startCode.'.user_ids', []);
-            $fisty = User::where('username', 'mkm02119')->where('access_status', 'approved')->where('is_active', true)->first();
-            if (! $fisty || ! in_array($fisty->id, $firstApprovers, true)) {
-                throw ValidationException::withMessages(['gross_weight' => 'Workflow approval Disposal belum diarahkan ke Fisty. Hubungi administrator.']);
+            $procurementApprover = User::where('username', 'mkm02119')->where('access_status', 'approved')->where('is_active', true)->first();
+            if (! $procurementApprover || ! in_array($procurementApprover->id, $firstApprovers, true)) {
+                throw ValidationException::withMessages(['gross_weight' => 'Workflow approval Disposal belum diarahkan ke Procurement. Hubungi administrator.']);
             }
 
             $details['gross_weight'] = $data['gross_weight'];
             $doc->update(['form_details' => $details, 'ppc_code_used_at' => now()]);
-            $workflow->transition($doc, $doc->creator()->firstOrFail(), 'submit', 'Berat kotor diinput melalui PPC Gate.');
+            $workflow->transition($doc, $doc->creator()->firstOrFail(), 'submit', 'Timbang 2 (Truck Isi) diinput melalui PPC Gate.');
         });
 
-        return redirect()->route('ppc.show', $document)->with('success', 'Berat kotor tersimpan. Dokumen sudah dikirim ke Fisty untuk proses approval.');
+        return redirect()->route('ppc.show', $document)->with('success', 'Timbang 2 (Truck Isi) tersimpan. Dokumen sudah dikirim ke Procurement untuk proses approval.');
     }
 }

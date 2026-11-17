@@ -45,6 +45,7 @@ class PpcGateTest extends TestCase
         $this->assertNotNull($code);
         $this->assertSame(6, strlen($code));
         $this->assertNull($document->securityCode());
+        $this->assertSame($code, $document->gateCode());
         $this->assertArrayNotHasKey('gross_weight', $document->form_details);
 
         $this->actingAs($document->creator)->post(route('documents.transition', $document), [
@@ -52,11 +53,11 @@ class PpcGateTest extends TestCase
         ])->assertSessionHasErrors('action');
         $this->assertSame('DRAFT', $document->fresh()->status);
 
-        $this->get(route('ppc.index'))->assertOk()->assertSee('Input Berat Kotor Disposal')->assertSee('Kode PPC');
+        $this->get(route('ppc.index'))->assertOk()->assertSee('Input Timbang 2 (Truck Isi)')->assertSee('Unique number PPC');
         $this->post(route('ppc.lookup'), ['ppc_code' => 'WRONG1'])->assertSessionHasErrors('ppc_code');
         $this->post(route('ppc.lookup'), ['ppc_code' => strtolower($code)])->assertRedirect(route('ppc.show', $document));
         $this->get(route('ppc.show', $document))->assertOk()
-            ->assertSee($document->number)->assertSee('100 kg')->assertSee('Berat kotor (kg) *')->assertSee('Simpan &amp; kirim ke Fisty', false);
+            ->assertSee($document->number)->assertSee('100 kg')->assertSee('Timbang 2 (Truck Isi) *')->assertSee('Simpan &amp; kirim ke Procurement', false);
 
         $this->post(route('ppc.weigh', $document), [
             'inspection_version' => $document->inspectionVersion(), 'gross_weight' => 99,
@@ -68,15 +69,17 @@ class PpcGateTest extends TestCase
         ])->assertRedirect(route('ppc.show', $document))->assertSessionHasNoErrors();
 
         $document->refresh();
-        $fisty = User::where('username', 'mkm02119')->firstOrFail();
+        $procurementApprover = User::where('username', 'mkm02119')->firstOrFail();
         $this->assertSame('SALES_APPROVAL', $document->status);
         $this->assertSame(125.5, (float) $document->form_details['gross_weight']);
         $this->assertNotNull($document->ppc_code_used_at);
-        $this->assertNotNull($document->securityCode());
+        $this->assertNull($document->securityCode());
+        $this->assertSame($code, $document->gateCode());
         $this->assertDatabaseHas('document_events', ['delivery_document_id' => $document->id, 'action' => 'submit', 'from_status' => 'DRAFT', 'to_status' => 'SALES_APPROVAL']);
-        Notification::assertSentTo($fisty, DocumentUpdated::class);
-        $this->get(route('ppc.show', $document))->assertOk()->assertSee('Penimbangan PPC selesai')->assertSee('Dokumen sudah masuk proses approval Fisty');
+        Notification::assertSentTo($procurementApprover, DocumentUpdated::class);
+        $this->get(route('ppc.show', $document))->assertOk()->assertSee('Penimbangan PPC selesai')->assertSee('Dokumen sudah masuk proses approval Procurement');
         $this->withSession([])->post(route('ppc.lookup'), ['ppc_code' => $code])->assertSessionHasErrors('ppc_code');
+        $this->post(route('security.lookup'), ['security_code' => $code])->assertRedirect(route('security.show', $document));
     }
 
     public function test_ppc_gate_rejects_other_documents_and_requires_the_exact_code(): void
@@ -89,7 +92,7 @@ class PpcGateTest extends TestCase
         $this->post(route('ppc.weigh', $other), ['inspection_version' => $other->inspectionVersion(), 'gross_weight' => 110])->assertForbidden();
     }
 
-    public function test_returned_disposal_gets_a_new_ppc_code_and_must_be_weighed_again(): void
+    public function test_returned_disposal_keeps_the_same_unique_code_and_must_be_weighed_again(): void
     {
         $document = $this->createDisposal();
         $oldCode = $document->ppcCode();
@@ -109,9 +112,9 @@ class PpcGateTest extends TestCase
         $document->refresh();
         $this->assertSame('DRAFT', $document->status);
         $this->assertArrayNotHasKey('gross_weight', $document->form_details);
-        $this->assertNotSame($oldCode, $document->ppcCode());
+        $this->assertSame($oldCode, $document->ppcCode());
+        $this->assertSame($oldCode, $document->gateCode());
         $this->assertNull($document->ppc_code_used_at);
-        $this->withSession([])->post(route('ppc.lookup'), ['ppc_code' => $oldCode])->assertSessionHasErrors('ppc_code');
-        $this->post(route('ppc.lookup'), ['ppc_code' => $document->ppcCode()])->assertRedirect(route('ppc.show', $document));
+        $this->withSession([])->post(route('ppc.lookup'), ['ppc_code' => $oldCode])->assertRedirect(route('ppc.show', $document));
     }
 }

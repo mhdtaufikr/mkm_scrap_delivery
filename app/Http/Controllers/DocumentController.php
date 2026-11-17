@@ -196,7 +196,7 @@ class DocumentController extends Controller
             abort_unless($doc->editableBy($request->user()), 403);
             abort_if($doc->type !== $data['type'], 422, 'Document type cannot be changed after a number is assigned.');
             $doc->update($data);
-            if ($doc->type === 'DISPOSAL' && (! $doc->ppc_code_hash || $doc->ppc_code_used_at)) {
+            if ($doc->type === 'DISPOSAL' && ! $doc->ppc_code_hash) {
                 $doc->issuePpcCode();
             }
             $doc->events()->create(['user_id' => $request->user()->id, 'actor_role' => $request->user()->role, 'action' => 'updated', 'from_status' => 'DRAFT', 'to_status' => 'DRAFT']);

@@ -28,7 +28,7 @@ class DocumentFormTest extends TestCase
             ->assertDontSee('Nomor KTP / SIM')->assertDontSee('Nomor lot')
             ->assertDontSee('Nama pengemudi / ekspedisi')
             ->assertDontSee('form_details[delivery_number]', false)
-            ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Berat bersih (kg)');
+            ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Timbang 1 (Truck Kosong)')->assertSee('NAMA DRIVER');
         $this->post('/documents', $this->payload())->assertRedirect()->assertSessionHasNoErrors();
         $d = DeliveryDocument::firstOrFail();
         $this->assertSame('', $d->driver_name);
@@ -73,7 +73,7 @@ class DocumentFormTest extends TestCase
         $this->assertSame(6, strlen($d->ppcCode()));
         $this->assertNull($d->securityCode());
         $this->get(route('documents.print', [$d, 'template' => 'delivery']))->assertOk()
-            ->assertSee('MKM/JKT/0001/X/2026')->assertSee('BERAT BERSIH (KG)');
+            ->assertSee('MKM/JKT/0001/X/2026')->assertSee('TIMBANG 1 (TRUCK KOSONG)');
 
         $legacy = DeliveryDocument::create([
             'type' => 'DISPOSAL', 'number' => 'SPB-LEGACY', 'status' => 'DRAFT', 'created_by' => $u->id,
@@ -83,7 +83,7 @@ class DocumentFormTest extends TestCase
         ]);
         $this->get(route('documents.edit', $legacy))->assertOk()
             ->assertSee('SURAT PENGELUARAN BARANG')->assertSee('Goods Release - Disposal')
-            ->assertSee('Berat bersih (kg)')->assertSee('DRAFT ONLY')->assertSee('WF-00123');
+            ->assertSee('Timbang 1 (Truck Kosong)')->assertSee('DRAFT ONLY')->assertSee('WF-00123');
         $this->post('/documents', ['type' => 'SCRAP', 'document_date' => '2026-10-16', 'company' => 'Buyer', 'goods_description' => 'Goods'])
             ->assertSessionHasErrors(['vehicle', 'plate_number', 'destination']);
     }

@@ -50,7 +50,7 @@ class DocumentWorkflow
                 throw ValidationException::withMessages(['evidence' => 'Valid handover evidence is required before goods release.']);
             }
             $doc->status = $next;
-            if ($action === 'submit' && ! $doc->security_code_hash) {
+            if ($action === 'submit' && ! $doc->gateCodeHash()) {
                 $doc->issueSecurityCode();
             }
             if ($action === 'return') {
@@ -64,7 +64,7 @@ class DocumentWorkflow
                     $details = $doc->form_details ?? [];
                     unset($details['gross_weight']);
                     $doc->form_details = $details;
-                    $doc->issuePpcCode();
+                    $doc->ppc_code_used_at = null;
                 }
             }
             if ($action === 'handover') {
@@ -96,9 +96,17 @@ class DocumentWorkflow
                 app(DocumentNotifications::class)->send($approvers, $doc, $message, $notes);
             }
             $noticeRoles = array_unique([...($target['notice_roles'] ?? []), ...($action === 'delegate' ? ($step['delegate_notice_roles'] ?? []) : [])]);
-            $informational = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->where(fn ($q) => $q->whereIn('role', $noticeRoles)->orWhere('id', $doc->created_by))->whereKeyNot($actor->id)->whereNotIn('id', $approvers->pluck('id'))->get();
+            $notifyCreator = $action === 'return' || $next === 'COMPLETED';
+            $informational = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->where(function ($q) use ($noticeRoles, $notifyCreator, $doc) {
+                $q->whereIn('role', $noticeRoles);
+                if ($notifyCreator) {
+                    $q->orWhere('id', $doc->created_by);
+                }
+            })->whereKeyNot($actor->id)->whereNotIn('id', $approvers->pluck('id'))->get();
             app(DocumentNotifications::class)->sendInformational($informational, $doc, $message, $notes);
-            $yasin = User::where('username', 'mkm01478')->where('access_status', 'approved')->where('is_active', true)->first();
+            $yasin = $actor->role === 'SECURITY' && $action === 'release' && $next === 'COMPLETED'
+                ? User::where('username', 'mkm01478')->where('access_status', 'approved')->where('is_active', true)->first()
+                : null;
             if ($yasin && $yasin->id !== $actor->id && ! $approvers->contains('id', $yasin->id) && ! $informational->contains('id', $yasin->id)) {
                 app(DocumentNotifications::class)->sendInformational(collect([$yasin]), $doc, 'Notifikasi Yasin · '.$message, $notes);
             }

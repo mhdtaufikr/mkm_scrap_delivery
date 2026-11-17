@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DeliveryDocument;
 use App\Models\User;
+use App\Notifications\WorkflowUpdateMail;
 use App\Services\DocumentWorkflow;
 use Database\Seeders\OperationalSetupSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,7 +79,7 @@ class OperationalWorkflowTest extends TestCase
         $this->assertSame('DRIVER_HANDOVER', $document->fresh()->status);
 
         $this->get(route('security.show', $document))->assertOk()
-            ->assertSee('Nama lengkap pengemudi')->assertSee('Diisi oleh petugas Security')
+            ->assertSee('Informasi driver')->assertSee('Nama driver')->assertSee('Konfirmasi nama driver')
             ->assertDontSee('Tanda tangan pengemudi')->assertDontSee('data:image/svg+xml;base64,', false);
         $this->get('/driver-signature/obsolete-token')->assertNotFound();
         $document->refresh();
@@ -103,7 +104,7 @@ class OperationalWorkflowTest extends TestCase
         $this->assertGreaterThanOrEqual(5, substr_count($deliveryPrint->getContent(), 'paper-approval-check'));
 
         $smbPrint = $this->get(route('documents.print', [$document, 'template' => 'smb']));
-        $smbPrint->assertOk()->assertSee('Driver Actual')->assertSee($owner->name);
+        $smbPrint->assertOk()->assertSee('NAMA DRIVER')->assertSee('Driver Actual')->assertDontSee($owner->name);
         $this->assertGreaterThanOrEqual(2, substr_count($smbPrint->getContent(), 'paper-approval-check'));
 
         $releasePrint = $this->get(route('documents.print', [$document, 'template' => 'release']));
@@ -111,5 +112,43 @@ class OperationalWorkflowTest extends TestCase
             ->assertSee('Jakarta')->assertSee($document->number)->assertSee('Fisty Savira')
             ->assertSee($owner->name)->assertSee('Buyer')->assertSee('Driver Actual')
             ->assertDontSee('................................');
+    }
+
+    public function test_creator_and_yasin_only_receive_status_mail_after_security_completes(): void
+    {
+        Notification::fake();
+        config(['workflow.initial_password' => 'Temporary#2026']);
+        $this->seed(OperationalSetupSeeder::class);
+
+        $owner = User::where('username', 'mkm01868')->firstOrFail();
+        $procurementApprover = User::where('username', 'mkm02119')->firstOrFail();
+        $rahmat = User::where('username', 'mkm001531')->firstOrFail();
+        $agus = User::where('username', 'mkm01436')->firstOrFail();
+        $yasin = User::where('username', 'mkm01478')->firstOrFail();
+        $security = User::where('username', 'security.gate')->firstOrFail();
+        $document = DeliveryDocument::create([
+            'number' => 'SMB-MAIL-FLOW', 'created_by' => $owner->id, 'type' => 'SCRAP', 'status' => 'DRAFT',
+            'document_date' => today(), 'driver_name' => '', 'company' => 'Buyer', 'destination' => 'Jakarta',
+            'vehicle' => 'Truck', 'plate_number' => 'B 2026 MKM', 'goods_description' => 'Scrap',
+        ]);
+        $workflow = app(DocumentWorkflow::class);
+
+        $workflow->transition($document, $owner, 'submit');
+        Notification::assertSentTo($procurementApprover, WorkflowUpdateMail::class);
+        Notification::assertNotSentTo([$owner, $yasin], WorkflowUpdateMail::class);
+
+        $workflow->transition($document->fresh(), $procurementApprover, 'approve');
+        Notification::assertSentTo([$rahmat, $agus], WorkflowUpdateMail::class);
+        Notification::assertNotSentTo([$owner, $yasin], WorkflowUpdateMail::class);
+
+        $workflow->transition($document->fresh(), $agus, 'approve');
+        Notification::assertNotSentTo([$owner, $yasin], WorkflowUpdateMail::class);
+
+        $workflow->transition($document->fresh(), $security, 'release', null, [], [
+            'security_officer_name' => 'Security Actual', 'actual_actor_name' => 'Security Actual',
+            'driver_name' => 'Driver Actual',
+        ]);
+        Notification::assertSentToTimes($owner, WorkflowUpdateMail::class, 1);
+        Notification::assertSentToTimes($yasin, WorkflowUpdateMail::class, 1);
     }
 }

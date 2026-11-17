@@ -66,7 +66,16 @@ class SecurityController extends Controller
             throw ValidationException::withMessages(['security_code' => 'Terlalu banyak percobaan. Coba lagi dalam '.RateLimiter::availableIn($key).' detik.']);
         }
         $hash = DeliveryDocument::securityCodeHash($data['security_code']);
-        $document = DeliveryDocument::whereIn('type', ['SCRAP', 'DISPOSAL'])->where('security_code_hash', $hash)->first();
+        $document = DeliveryDocument::whereIn('type', ['SCRAP', 'DISPOSAL'])
+            ->where(function ($query) use ($hash) {
+                $query->where(function ($disposal) use ($hash) {
+                    $disposal->where('type', 'DISPOSAL')->where(function ($code) use ($hash) {
+                        $code->where('ppc_code_hash', $hash)
+                            ->orWhere(fn ($fallback) => $fallback->whereNull('ppc_code_hash')->where('security_code_hash', $hash));
+                    });
+                })->orWhere(fn ($scrap) => $scrap->where('type', 'SCRAP')->where('security_code_hash', $hash));
+            })
+            ->first();
         if (! $document || ! in_array($document->status, ['SALES_APPROVAL', 'HRA_APPROVAL', 'DRIVER_HANDOVER'], true) || $document->security_code_used_at) {
             RateLimiter::hit($key, 900);
             throw ValidationException::withMessages(['security_code' => 'Nomor unik tidak ditemukan atau dokumen belum siap diperiksa Security.']);
@@ -81,7 +90,8 @@ class SecurityController extends Controller
     {
         abort_unless(in_array($document->type, ['SCRAP', 'DISPOSAL'], true), 404);
         $verified = $request->session()->get('security_documents.'.$document->id);
-        abort_unless(is_string($verified) && $document->security_code_hash && hash_equals($document->security_code_hash, $verified), 403, 'Masukkan nomor unik dokumen terlebih dahulu.');
+        $codeHash = $document->gateCodeHash();
+        abort_unless(is_string($verified) && $codeHash && hash_equals($codeHash, $verified), 403, 'Masukkan nomor unik dokumen terlebih dahulu.');
     }
 
     public function show(Request $request, DeliveryDocument $document)

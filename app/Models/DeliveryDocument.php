@@ -44,7 +44,7 @@ class DeliveryDocument extends Model
         do {
             $raw = strtoupper(Str::random(6));
             $hash = self::securityCodeHash($raw);
-        } while (self::where('security_code_hash', $hash)->exists());
+        } while (self::where('security_code_hash', $hash)->orWhere('ppc_code_hash', $hash)->exists());
 
         $code = $raw;
         $this->forceFill([
@@ -74,7 +74,7 @@ class DeliveryDocument extends Model
         do {
             $raw = strtoupper(Str::random(6));
             $hash = self::ppcCodeHash($raw);
-        } while (self::where('ppc_code_hash', $hash)->exists());
+        } while (self::where('ppc_code_hash', $hash)->orWhere('security_code_hash', $hash)->exists());
 
         $code = $raw;
         $this->forceFill([
@@ -90,6 +90,20 @@ class DeliveryDocument extends Model
     public function ppcCode(): ?string
     {
         return $this->ppc_code_encrypted ? Crypt::decryptString($this->ppc_code_encrypted) : null;
+    }
+
+    public function gateCodeHash(): ?string
+    {
+        return $this->type === 'DISPOSAL' && $this->ppc_code_hash
+            ? $this->ppc_code_hash
+            : $this->security_code_hash;
+    }
+
+    public function gateCode(): ?string
+    {
+        return $this->type === 'DISPOSAL' && $this->ppc_code_hash
+            ? $this->ppcCode()
+            : $this->securityCode();
     }
 
     public function creator(): BelongsTo

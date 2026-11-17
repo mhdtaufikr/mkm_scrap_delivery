@@ -206,7 +206,7 @@ document.querySelectorAll('[data-goods-form]').forEach((form) => {
         });
         const disposal = type.value === 'DISPOSAL';
         form.querySelector('[data-type-hint]').textContent = disposal
-            ? 'Simpan Disposal dengan berat bersih. PPC mengisi berat kotor melalui PPC Gate sebelum approval ke Fisty dimulai.'
+            ? 'Input Timbang 1 (Truck Kosong). PPC mengisi Timbang 2 (Truck Isi) melalui unique number sebelum approval Procurement dimulai.'
             : 'Scrap mengikuti alur persetujuan Procurement, HRD, lalu pemeriksaan Security.';
         const submitApproval = form.querySelector('[data-submit-approval]');
         const saveDraft = form.querySelector('[data-save-draft]');

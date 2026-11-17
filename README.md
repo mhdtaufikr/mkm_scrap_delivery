@@ -68,7 +68,7 @@ Validasi publish menolak tujuan hilang, putaran, tahap tidak terhubung, role/use
 Referensi kebutuhan: MOM Digitalisasi Surat Jalan 15 Oct 2026.pdf yang diberikan user. Dokumen ini menjadi referensi kebutuhan aplikasi.
 
 1. M. Najmal atau Mujib membuat SMB/SJ. Aji Bayu dan Faqih menerima notifikasi.
-2. Fisty Savira melakukan approval Procurement & Sales; Masrukhan dan Aji W menerima notifikasi.
+2. Procurement melakukan approval; penerima notifikasi mengikuti konfigurasi workflow aktif.
 3. Rahmat W melakukan approval HRA. Agus F menerima notifikasi dan juga dapat bertindak sebagai approver pengganti.
 4. Akun notifikasi Yasin membuka tahap pickup warehouse dan mengisi nama pelaksana aktual.
 5. PPC mencatat nama driver/penerima dan mengunggah bukti tanda tangan (PDF/JPG/PNG, maksimal 5 MB). Sistem menerbitkan unique number acak untuk driver.
