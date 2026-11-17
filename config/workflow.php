@@ -7,4 +7,6 @@ return [
     // Trial delivery redirects all workflow mail while retaining the intended recipient in the email body.
     'trial_mode' => env('WORKFLOW_TRIAL_MODE', true),
     'trial_recipient' => env('WORKFLOW_TRIAL_RECIPIENT', 'muhammad.taufik@ptmkm.co.id'),
+    // Single mailbox responsible for reviewing new SSO access requests.
+    'access_request_recipient' => env('ACCESS_REQUEST_RECIPIENT', 'muhammad.taufik@ptmkm.co.id'),
 ];

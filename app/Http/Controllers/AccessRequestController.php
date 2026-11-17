@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\AccessRequestMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 
 class AccessRequestController extends Controller
@@ -25,16 +26,14 @@ class AccessRequestController extends Controller
     {
         abort_unless($request->session()->get('auth_method') === 'sso', 403);
         $data = $request->validate(['requested_role' => ['required', Rule::exists('roles', 'code')->where('is_active', true)], 'responsibility' => 'required|string|max:255', 'reason' => 'required|string|min:10|max:2000']);
-        DB::transaction(function () use ($request, $data) {
+        $recipient = strtolower(trim((string) config('workflow.access_request_recipient')));
+        abort_unless(filter_var($recipient, FILTER_VALIDATE_EMAIL), 500, 'Access request recipient is not configured.');
+        DB::transaction(function () use ($request, $data, $recipient) {
             $u = User::lockForUpdate()->findOrFail($request->user()->id);
             abort_unless(in_array($u->access_status, ['onboarding', 'rejected'], true), 409, 'You already have a pending request or approved access.');
-            $admins = User::where('access_status', 'approved')->where('is_active', true)->whereHas('roleRecord', fn ($q) => $q->where('is_active', true))->get()->filter(fn ($a) => $a->hasPermission('users.manage') && ! str_ends_with($a->email, '.local') && ! $a->is($u));
-            abort_if($admins->isEmpty(), 422, 'No access administrator is available. Contact your IT administrator.');
             $r = AccessRequest::create([...$data, 'user_id' => $u->id, 'profile' => $u->only(['name', 'email', 'job_title', 'department', 'section'])]);
             $u->update(['access_status' => 'pending']);
-            foreach ($admins as $admin) {
-                $admin->notify(new AccessRequestMail($r, true));
-            }
+            Notification::route('mail', $recipient)->notify(new AccessRequestMail($r, true));
         });
 
         return redirect()->route('access.show')->with('success', 'Request submitted. An administrator will review your access.');

@@ -73,7 +73,7 @@ The interface is English. The profile menu is compact and has no Logout button. 
 
 New Microsoft SSO identities automatically receive an SSO-only account with `access_status=onboarding`. The initial VIEWER role is a placeholder: middleware, permissions and workflow actions block all business access until approval. Existing accounts retain approved status during migration; suspended accounts remain blocked.
 
-At `/access`, a user selects an active role, describes their responsibilities and provides a business reason. Submission records an immutable profile/request snapshot and sets status to pending. Requested roles are never assigned at submission. Active approved users with `users.manage` receive email (demo `.local` addresses are excluded).
+At `/access`, a user selects an active role, describes their responsibilities and provides a business reason. Submission records an immutable profile/request snapshot and sets status to pending. Requested roles are never assigned at submission. Exactly one review email is sent to `ACCESS_REQUEST_RECIPIENT` (default `muhammad.taufik@ptmkm.co.id`); it is not broadcast to every administrator.
 
 Administrators review `/access-requests`. Approval assigns the requested active role; rejection requires a note and allows resubmission. Decisions are authenticated POST requests protected by CSRF, serialized with row locks, audited with reviewer/time, and cannot be repeated or self-approved. Email links only open the review page. Generic Users updates cannot bypass onboarding.
 

@@ -24,10 +24,9 @@ class AccessRequestTest extends TestCase
         return ['requested_role' => 'PPC', 'responsibility' => 'Receiving officer', 'reason' => 'Receive and verify scrap delivery documents.'];
     }
 
-    public function test_pending_user_requests_role_without_receiving_it_and_admin_is_notified(): void
+    public function test_pending_user_requests_role_and_only_the_configured_mailbox_is_notified(): void
     {
         Notification::fake();
-        $admin = User::factory()->create(['role' => 'ADMIN']);
         $u = $this->newcomer();
         $this->actingAs($u)->withSession(['auth_method' => 'sso'])->get('/access')->assertOk()->assertSee('Tell us what access you need');
         foreach (['/home', '/users', '/documents', '/access-requests'] as $path) {
@@ -38,7 +37,11 @@ class AccessRequestTest extends TestCase
         $this->assertSame('pending', $u->fresh()->access_status);
         $this->post('/access', $this->payload())->assertStatus(409);
         $this->assertDatabaseCount('access_requests', 1);
-        Notification::assertSentTo($admin, AccessRequestMail::class, fn ($n) => $n->forAdmin);
+        Notification::assertSentOnDemand(AccessRequestMail::class, function ($notification, $channels, $notifiable) {
+            return $notification->forAdmin
+                && $channels === ['mail']
+                && $notifiable->routes['mail'] === 'muhammad.taufik@ptmkm.co.id';
+        });
         $this->actingAs($u->fresh())->get('/access')->assertSee('Waiting for administrator approval');
     }
 
