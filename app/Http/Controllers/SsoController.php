@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\MicrosoftProfileSync;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -100,10 +101,35 @@ class SsoController extends Controller
 
             return redirect()->intended(route('dashboard'));
         } catch (\Throwable $exception) {
-            // Never log provider exception messages, authorization codes, access tokens, or secrets.
-            Log::warning('SSO login failed.', ['exception_class' => $exception::class]);
+            // Never log provider messages, response bodies, authorization codes, access tokens, or secrets.
+            Log::warning('SSO login failed.', $this->safeProviderFailureContext($exception));
 
             return redirect()->route('login')->withErrors(['sso' => 'SSO sign-in failed or the session expired. Restart using the SSO sign-in button.']);
         }
+    }
+
+    private function safeProviderFailureContext(\Throwable $exception): array
+    {
+        $context = ['exception_class' => $exception::class];
+        if (! $exception instanceof RequestException) {
+            return $context;
+        }
+
+        $host = strtolower($exception->getRequest()->getUri()->getHost());
+        $context['provider_endpoint'] = match (true) {
+            $host === 'graph.microsoft.com' => 'microsoft-graph',
+            $host === 'login.microsoftonline.com' => 'microsoft-identity',
+            default => 'other',
+        };
+        if ($response = $exception->getResponse()) {
+            $context['http_status'] = $response->getStatusCode();
+            $payload = json_decode((string) $response->getBody(), true);
+            $providerError = is_array($payload) ? ($payload['error']['code'] ?? $payload['error'] ?? null) : null;
+            if (is_string($providerError) && preg_match('/^[A-Za-z0-9_.-]{1,100}$/', $providerError)) {
+                $context['provider_error'] = $providerError;
+            }
+        }
+
+        return $context;
     }
 }

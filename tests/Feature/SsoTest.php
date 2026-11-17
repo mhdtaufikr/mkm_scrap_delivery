@@ -12,6 +12,7 @@ use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 use SocialiteProviders\Azure\Provider;
 use SocialiteProviders\Manager\Config;
@@ -82,6 +83,32 @@ class SsoTest extends TestCase
         $this->provider($history);
         $this->withSession(['state' => 'expected'])->get('/auth/azure/callback?state=wrong&code=unused')->assertRedirect(route('login'))->assertSessionHasErrors('sso');
         $this->assertSame([], $history);
+        $this->assertGuest();
+    }
+
+    public function test_provider_failure_logs_only_safe_diagnostic_fields(): void
+    {
+        $this->enable();
+        $handler = new MockHandler([
+            new Response(401, [], json_encode(['error' => 'invalid_client', 'error_description' => 'contains-sensitive-provider-detail'])),
+        ]);
+        $client = new Client(['handler' => HandlerStack::create($handler)]);
+        Socialite::shouldReceive('driver')->with('azure')->andReturnUsing(function () use ($client) {
+            return (new Provider(request(), 'client-id', 'test-secret', 'http://localhost/auth/azure/callback'))
+                ->setConfig(new Config('client-id', 'test-secret', 'http://localhost/auth/azure/callback', ['tenant' => self::TENANT]))
+                ->setHttpClient($client);
+        });
+        Log::shouldReceive('warning')->once()->with('SSO login failed.', \Mockery::on(fn (array $context) => $context === [
+            'exception_class' => 'GuzzleHttp\\Exception\\ClientException',
+            'provider_endpoint' => 'microsoft-identity',
+            'http_status' => 401,
+            'provider_error' => 'invalid_client',
+        ]));
+
+        $this->withSession(['state' => 'expected'])
+            ->get('/auth/azure/callback?state=expected&code=code')
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('sso');
         $this->assertGuest();
     }
 
