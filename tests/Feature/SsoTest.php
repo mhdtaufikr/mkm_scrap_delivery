@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccessRequest;
 use App\Models\User;
 use Database\Seeders\RequestedAdminSeeder;
 use GuzzleHttp\Client;
@@ -226,6 +227,36 @@ class SsoTest extends TestCase
         $this->assertSame('SSO Name', $admin->fresh()->name);
         $this->assertSame($password, $admin->fresh()->password);
         $this->get(route('users.index'))->assertOk();
+    }
+
+    public function test_bootstrap_admin_seeder_approves_an_existing_pending_sso_request(): void
+    {
+        $this->enable();
+        config(['services.azure.bootstrap_admin_email' => 'mkm02120@ptmkm.co.id']);
+        $user = User::factory()->create([
+            'email' => 'mkm02120@ptmkm.co.id',
+            'role' => 'VIEWER',
+            'access_status' => 'pending',
+            'sso_tenant_id' => self::TENANT,
+            'sso_object_id' => self::OBJECT,
+            'local_login_enabled' => false,
+        ]);
+        $request = AccessRequest::create([
+            'user_id' => $user->id,
+            'requested_role' => 'ADMIN',
+            'responsibility' => 'Application administrator',
+            'reason' => 'Administer production access and workflow configuration.',
+            'profile' => $user->only(['name', 'email', 'job_title', 'department', 'section']),
+        ]);
+
+        $this->seed(RequestedAdminSeeder::class);
+
+        $this->assertSame('ADMIN', $user->fresh()->role);
+        $this->assertSame('approved', $user->fresh()->access_status);
+        $this->assertTrue($user->fresh()->is_active);
+        $this->assertSame('approved', $request->fresh()->status);
+        $this->assertNotNull($request->fresh()->reviewed_at);
+        $this->assertNull($request->fresh()->reviewed_by);
     }
 
     public function test_pending_admin_is_not_linked_to_another_principal(): void
