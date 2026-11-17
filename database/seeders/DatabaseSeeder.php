@@ -11,6 +11,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call([RoleSeeder::class, ApprovalFlowSeeder::class, ExistingDocumentApprovalSeeder::class, LocalAccountSeeder::class, RequestedAdminSeeder::class]);
+        $seeders = [RoleSeeder::class, ApprovalFlowSeeder::class];
+        if (! app()->environment('testing')) {
+            $seeders[] = OperationalSetupSeeder::class;
+        }
+        $this->call([...$seeders, ExistingDocumentApprovalSeeder::class, LocalAccountSeeder::class]);
     }
 }

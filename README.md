@@ -20,9 +20,9 @@ Jangan menjalankan key:generate ulang pada instalasi yang sudah memiliki APP_KEY
 
 ## Seeder dan akun login
 
-`DatabaseSeeder` menjalankan RoleSeeder, ApprovalFlowSeeder, ExistingDocumentApprovalSeeder, dan LocalAccountSeeder. Untuk menjalankan ulang: `php artisan db:seed`.
+`DatabaseSeeder` menjalankan role, flow, seluruh akun operasional production, akun Security, backfill dokumen, dan akun demo khusus environment lokal.
 
-Setup akun dan flow operasional hasil mapping user dijalankan sekali dengan `php artisan db:seed --class=OperationalSetupSeeder`. Isi `WORKFLOW_INITIAL_PASSWORD` bila akun akan memakai login lokal; tanpa nilai tersebut akun baru dibuat SSO-only. Password existing tidak ditimpa.
+`php artisan db:seed --force` otomatis menjalankan setup seluruh akun production, akun sistem Security, role, dan flow operasional secara idempotent. Isi `WORKFLOW_INITIAL_PASSWORD` hanya bila akun manusia akan memakai login lokal; tanpa nilai tersebut akun baru dipra-daftarkan ke tenant Azure untuk linking SSO pertama berdasarkan email resmi. DigiMAMS tetap service-only. Password dan Object ID existing tidak ditimpa.
 
 Seeder tidak menimpa password akun yang sudah ada, perubahan role/permission, atau master flow yang telah dikonfigurasi. Dokumen lama tanpa snapshot dibackfill ke flow awal, tanpa mengubah statusnya.
 

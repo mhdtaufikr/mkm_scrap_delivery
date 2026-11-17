@@ -56,6 +56,10 @@ class OperationalWorkflowTest extends TestCase
         foreach ($expected as $username => $role) {
             $this->assertDatabaseHas('users', ['username' => $username, 'role' => $role, 'local_login_enabled' => true, 'must_change_password' => false]);
         }
+        $this->assertDatabaseHas('users', [
+            'name' => 'DigiMAMS', 'email' => 'digimams@ptmkm.co.id', 'role' => 'PPC',
+            'local_login_enabled' => false, 'is_active' => true, 'access_status' => 'approved',
+        ]);
 
         $owner = User::where('username', 'mkm01868')->firstOrFail();
         $document = DeliveryDocument::create([
@@ -150,5 +154,39 @@ class OperationalWorkflowTest extends TestCase
         ]);
         Notification::assertSentToTimes($owner, WorkflowUpdateMail::class, 1);
         Notification::assertSentToTimes($yasin, WorkflowUpdateMail::class, 1);
+    }
+
+    public function test_production_setup_pre_enrolls_named_users_for_sso_without_overwriting_credentials(): void
+    {
+        $tenant = '11111111-2222-4333-8444-555555555555';
+        config([
+            'workflow.initial_password' => null,
+            'services.azure.tenant' => $tenant,
+            'services.azure.bootstrap_admin_email' => 'mkm02120@ptmkm.co.id',
+        ]);
+
+        $this->seed(OperationalSetupSeeder::class);
+
+        foreach (['mkm01868', 'mkm01576', 'mkm02099', 'mkm01727', 'mkm01478', 'mkm02119', 'mkm01185', 'mkm02088', 'mkm001531', 'mkm01436'] as $username) {
+            $this->assertDatabaseHas('users', [
+                'username' => $username, 'sso_tenant_id' => $tenant, 'sso_object_id' => null,
+                'sso_link_pending' => true, 'local_login_enabled' => false,
+                'access_status' => 'approved', 'is_active' => true,
+            ]);
+        }
+        $this->assertDatabaseHas('users', [
+            'email' => 'digimams@ptmkm.co.id', 'role' => 'PPC',
+            'sso_tenant_id' => null, 'sso_link_pending' => false, 'local_login_enabled' => false,
+        ]);
+        $this->assertDatabaseHas('users', [
+            'email' => 'mkm02120@ptmkm.co.id', 'role' => 'ADMIN',
+            'sso_tenant_id' => $tenant, 'sso_object_id' => null,
+            'sso_link_pending' => true, 'is_active' => true,
+        ]);
+
+        $najmal = User::where('username', 'mkm01868')->firstOrFail();
+        $password = $najmal->password;
+        $this->seed(OperationalSetupSeeder::class);
+        $this->assertSame($password, $najmal->fresh()->password);
     }
 }
